@@ -1,0 +1,1071 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable no-unused-vars */
+import React, { useState, useEffect } from 'react';
+import { useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
+
+const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
+
+export default function StudentDashboard(){
+  const navigate = useNavigate();
+  const [profile, setProfile] = useState({
+    university:'', degreeProgram:'', year:'', personalityType:'',
+    subjects:[], weakSubjects:[], strongSubjects:[], skills:[],
+    studyGoals:[], careerGoals:[], examGoals:[],
+    learningStyle:'', productivityTime:'', studyMode:'',
+    interests:[], tags:[], availability: {}
+  });
+
+  const [editState, setEditState] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState({show:false, msg:'', isError:false});
+  const [currentSection, setCurrentSection] = useState('overview');
+  const [avatarEmoji, setAvatarEmoji] = useState('🎓');
+  const [matches, setMatches] = useState([]); // matching group data
+  const [selectedMatchIds, setSelectedMatchIds] = useState([]);
+  const [groupRequests, setGroupRequests] = useState([]);
+  const [detailsPopup, setDetailsPopup] = useState({ show: false, invitee: null, request: null });
+  const [manualMatchChecked, setManualMatchChecked] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteMethod, setDeleteMethod] = useState('password');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [faceDeleteOpen, setFaceDeleteOpen] = useState(false);
+  const [faceDeleteBusy, setFaceDeleteBusy] = useState(false);
+  const [faceDeleteError, setFaceDeleteError] = useState('');
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const faceApiRef = useRef(null);
+  const modelsLoadedRef = useRef(false);
+
+  // Load profile on mount
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  // when profile arrives, fetch matching group info and request list
+  useEffect(() => {
+    if (!profile || !profile._id) return;
+    fetchMatches();
+    fetchGroupRequests();
+  }, [profile]);
+
+  // when matches update show a toast and optionally navigate to matching section
+  useEffect(() => {
+    if (matches.length > 0 && currentSection !== 'matching') {
+      showToast(`${matches.length} potential match${matches.length>1?'es':''} found`);
+      setCurrentSection('matching');
+    }
+  }, [matches]);
+
+  // custom cursor and hover animations (match Login/HomePage behavior)
+  // run again when loading finishes so that the cursor elements are in the DOM
+  useEffect(() => {
+    const cO = document.getElementById('cO');
+    const cI = document.getElementById('cI');
+    // if elements aren't yet rendered we simply skip; effect will run again
+    if (!cO || !cI) return;
+    const move = e => {
+      cI.style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
+      cO.style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
+    };
+    document.addEventListener('mousemove', move);
+
+    const enter = () => { cO.querySelector('.cur-ring').style.cssText += 'width:52px;height:52px;opacity:.35;'; };
+    const leave = () => { cO.querySelector('.cur-ring').style.cssText += 'width:34px;height:34px;opacity:.65;'; };
+    const hoverEls = document.querySelectorAll('a,button,input,.pill,.role-btn,.remember');
+    hoverEls.forEach(el => {
+      el.addEventListener('mouseenter', enter);
+      el.addEventListener('mouseleave', leave);
+    });
+
+    return () => {
+      document.removeEventListener('mousemove', move);
+      hoverEls.forEach(el => {
+        el.removeEventListener('mouseenter', enter);
+        el.removeEventListener('mouseleave', leave);
+      });
+    };
+  }, [loading]);
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  const loadProfile = async () => {
+    try {
+      const res = await api.get('/profile/me');
+      if (res.data) {
+        setProfile({...profile, ...res.data});
+      }
+    } catch (err) {
+      console.log('No profile yet');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const showToast = (msg, isError=false) => {
+    setToast({show:true, msg, isError});
+    setTimeout(() => setToast({...toast, show:false}), 3000);
+  };
+
+  const updateProfile = async (updates) => {
+    try {
+      const res = await api.post('/profile', updates);
+      setProfile({...profile, ...updates});
+      showToast('Changes saved ✓');
+      return true;
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Error saving', true);
+      return false;
+    }
+  };
+
+  const toggleEdit = (section) => {
+    setEditState({...editState, [section]: !editState[section]});
+  };
+
+  const saveFieldValue = (fieldName, value) => {
+    updateProfile({[fieldName]: value});
+    setEditState({...editState, [fieldName]: false});
+  };
+
+  const addTag = (arrayName, value) => {
+    if (!value.trim()) return;
+    // when adding strong/weak we require the value already exists in subjects
+    if ((arrayName === 'strongSubjects' || arrayName === 'weakSubjects') && !profile.subjects.includes(value)) {
+      showToast('Add the subject to current subjects first', true);
+      return;
+    }
+    const updated = [...(profile[arrayName] || []), value];
+    let extra = {};
+    // adding a subject doesn't need immediate filtering, but ensure subsets remain valid
+    if (arrayName === 'subjects') {
+      // no-op; strong/weak will be cleaned when subjects are removed later
+    }
+    setProfile({...profile, [arrayName]: updated, ...extra});
+    updateProfile({[arrayName]: updated, ...extra});
+  };
+
+  const removeTag = (arrayName, index) => {
+    const updated = profile[arrayName].filter((_, i) => i !== index);
+    let extra = {};
+    if (arrayName === 'subjects') {
+      // filter strong/weak lists to keep them as subsets
+      extra.strongSubjects = profile.strongSubjects.filter(s => updated.includes(s));
+      extra.weakSubjects = profile.weakSubjects.filter(s => updated.includes(s));
+    }
+    setProfile({...profile, [arrayName]: updated, ...extra});
+    updateProfile({[arrayName]: updated, ...extra});
+  };
+
+  const selectOption = (optionName, value) => {
+    saveFieldValue(optionName, value);
+  };
+
+  const toggleAvailability = (day, time) => {
+    const key = `${day}-${time}`;
+    const updated = {...profile.availability, [key]: !profile.availability[key]};
+    setProfile({...profile, availability: updated});
+    // persist immediately so student sees database change without needing Save button
+    updateProfile({availability: updated});
+  };
+
+  const saveAvailability = () => {
+    updateProfile({availability: profile.availability});
+  };
+
+  const fetchMatches = async (isManual = false) => {
+    try {
+      const res = await api.get(`/match/${profile._id}/top-matches`);
+      const foundMatches = (res.data || []).slice(0, 5);
+      setMatches(foundMatches);
+
+      if (isManual) {
+        setManualMatchChecked(true);
+        if (foundMatches.length === 0) {
+          showToast('Sorry, no matched students', true);
+        } else {
+          showToast(`${foundMatches.length} matched student${foundMatches.length > 1 ? 's' : ''} found`);
+        }
+      }
+    } catch (err) {
+      console.log('unable to fetch matches', err.response?.data || err.message);
+      if (isManual) {
+        setManualMatchChecked(true);
+        showToast('Sorry, no matched students', true);
+      }
+    }
+  };
+
+  const fetchGroupRequests = async () => {
+    try {
+      const res = await api.get('/match/group-requests/me');
+      setGroupRequests(res.data || []);
+    } catch (err) {
+      console.log('unable to fetch group requests', err.response?.data || err.message);
+    }
+  };
+
+  const toggleMatchSelection = (studentProfileId) => {
+    setSelectedMatchIds((prev) => {
+      if (prev.includes(studentProfileId)) {
+        return prev.filter((id) => id !== studentProfileId);
+      }
+      if (prev.length >= 4) {
+        showToast('You can select maximum 4 members', true);
+        return prev;
+      }
+      return [...prev, studentProfileId];
+    });
+  };
+
+  const requestGrouping = async () => {
+    try {
+      if (selectedMatchIds.length < 1) {
+        showToast('Select at least one member first', true);
+        return;
+      }
+      await api.post(`/match/${profile._id}/request-group`, { selectedStudentIds: selectedMatchIds });
+      setSelectedMatchIds([]);
+      fetchGroupRequests();
+      showToast('Group request sent');
+    } catch (err) {
+      console.error('grouping error', err.response?.data || err.message);
+      showToast(err.response?.data?.message || 'Failed to request grouping', true);
+    }
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModalOpen(false);
+    setDeleteError('');
+    setDeletePassword('');
+    setDeleteMethod('password');
+    setFaceDeleteOpen(false);
+    setFaceDeleteError('');
+    setFaceDeleteBusy(false);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const ensureFaceModels = async () => {
+    if (modelsLoadedRef.current && faceApiRef.current) {
+      return faceApiRef.current;
+    }
+
+    let faceapi = window.faceapi;
+
+    if (!faceapi) {
+      await new Promise((resolve, reject) => {
+        const existing = document.querySelector('script[data-face-api="true"]');
+        if (existing) {
+          existing.addEventListener('load', resolve, { once: true });
+          existing.addEventListener('error', reject, { once: true });
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.src = FACE_API_CDN;
+        script.async = true;
+        script.dataset.faceApi = 'true';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load face-api script'));
+        document.body.appendChild(script);
+      });
+
+      faceapi = window.faceapi;
+    }
+
+    if (!faceapi) {
+      throw new Error('Face API unavailable');
+    }
+
+    await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL);
+    await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URL);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL);
+
+    faceApiRef.current = faceapi;
+    modelsLoadedRef.current = true;
+    return faceapi;
+  };
+
+  const deleteWithPassword = async () => {
+    if (!deletePassword.trim()) {
+      setDeleteError('Please enter your password');
+      return;
+    }
+
+    try {
+      setDeleteBusy(true);
+      setDeleteError('');
+      await api.post('/profile/delete-secure', { password: deletePassword });
+      localStorage.removeItem('token');
+      window.dispatchEvent(new Event('auth-changed'));
+      showToast('Profile deleted');
+      closeDeleteModal();
+      navigate('/login');
+    } catch (err) {
+      setDeleteError(err.response?.data?.message || 'Failed to delete profile');
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
+
+  const openFaceDelete = async () => {
+    try {
+      setFaceDeleteError('');
+      setFaceDeleteOpen(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+    } catch (err) {
+      setFaceDeleteError('Could not access camera. Please allow camera permission.');
+    }
+  };
+
+  const deleteWithFaceId = async () => {
+    try {
+      setFaceDeleteBusy(true);
+      setFaceDeleteError('');
+      const faceapi = await ensureFaceModels();
+      const video = videoRef.current;
+      if (!video) {
+        throw new Error('Camera is not ready');
+      }
+
+      const detection = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!detection) {
+        throw new Error('No face detected. Please keep your face centered.');
+      }
+
+      const descriptor = Array.from(detection.descriptor).map(v => Number(v.toFixed(8)));
+      await api.post('/profile/delete-secure', { faceDescriptor: descriptor });
+      localStorage.removeItem('token');
+      window.dispatchEvent(new Event('auth-changed'));
+      showToast('Profile deleted');
+      closeDeleteModal();
+      navigate('/login');
+    } catch (err) {
+      setFaceDeleteError(err.response?.data?.message || err.message || 'Face verification failed');
+    } finally {
+      setFaceDeleteBusy(false);
+    }
+  };
+
+  const respondToRequest = async (requestId, action) => {
+    try {
+      await api.patch(`/match/group-requests/${requestId}/respond`, { action });
+      fetchGroupRequests();
+      showToast(action === 'accept' ? 'Request accepted' : 'Request rejected');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update request', true);
+    }
+  };
+
+  const updateCompletion = () => {
+    const fields = [
+      {key:'university'}, {key:'degreeProgram'}, {key:'year'},
+      {key:'subjects'}, {key:'skills'}, {key:'studyGoals'},
+      {key:'learningStyle'}, {key:'studyMode'}, {key:'interests'}
+    ];
+    let done = 0;
+    fields.forEach(f => {
+      const val = profile[f.key];
+      const filled = Array.isArray(val) ? val.length > 0 : !!val;
+      if (filled) done++;
+    });
+    return Math.round((done / fields.length) * 100);
+  };
+
+  const getMatchScore = () => {
+    const dims = [
+      Math.min(profile.subjects.length * 12, 100),
+      Math.min((profile.studyGoals.length + profile.careerGoals.length) * 12, 100),
+      profile.learningStyle ? 100 : 0,
+      Math.min(Object.values(profile.availability).filter(Boolean).length * 5, 100),
+      Math.min(profile.interests.length * 12, 100)
+    ];
+    return Math.round(dims.reduce((a, b) => a + b) / dims.length);
+  };
+
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const times = ['08:00','10:00','12:00','14:00','16:00','18:00','20:00','22:00'];
+
+  const completion = updateCompletion();
+  const matchScore = getMatchScore();
+
+  if (loading) return <div style={{padding:'6rem 2rem', textAlign:'center'}}>Loading...</div>;
+
+  return (
+    <>
+      <style>{getStyles()}</style>
+      
+      <div className="cur" id="cO" style={{position:'fixed',top:0,left:0,zIndex:9999,pointerEvents:'none'}}>
+        <div className="cur-ring" style={{width:'34px',height:'34px',border:'1.5px solid #1A6BFF',borderRadius:'50%',transform:'translate(-50%,-50%)',opacity:0.65,transition:'all 0.25s'}}></div>
+      </div>
+      <div className="cur" id="cI" style={{position:'fixed',top:0,left:0,zIndex:9999,pointerEvents:'none'}}>
+        <div className="cur-dot" style={{width:'8px',height:'8px',borderRadius:'50%',background:'#00E5C3',transform:'translate(-50%,-50%)'}}></div>
+      </div>
+
+      <div className="orb o1" style={{position:'fixed',width:'600px',height:'600px',background:'radial-gradient(circle,rgba(26,107,255,.16),transparent 70%)',top:'-200px',right:'-100px',filter:'blur(120px)',pointerEvents:'none',zIndex:0,borderRadius:'50%',animation:'d1 14s ease-in-out infinite alternate'}}></div>
+      <div className="orb o2" style={{position:'fixed',width:'400px',height:'400px',background:'radial-gradient(circle,rgba(0,229,195,.1),transparent 70%)',bottom:0,left:'-80px',filter:'blur(120px)',pointerEvents:'none',zIndex:0,borderRadius:'50%',animation:'d2 18s ease-in-out infinite alternate'}}></div>
+
+
+      <div style={{position:'relative',zIndex:1,display:'grid',gridTemplateColumns:'280px 1fr',gap:0,height:'100vh',paddingTop:'68px'}}>
+        {/* SIDEBAR */}
+        <aside style={{position:'sticky',top:'68px',height:'calc(100vh - 68px)',overflowY:'auto',padding:'2rem 1.5rem',background:'rgba(13,23,48,.6)',borderRight:'1px solid rgba(255,255,255,.09)',backdropFilter:'blur(20px)',display:'flex',flexDirection:'column',gap:'0.3rem'}}>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.7rem',padding:'1.5rem 1rem',background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.09)',borderRadius:'16px',marginBottom:'1.2rem',textAlign:'center'}}>
+            <div style={{position:'relative',width:'80px',height:'80px',borderRadius:'50%',background:'linear-gradient(135deg,#1A6BFF,#00E5C3)',display:'grid',placeItems:'center',fontSize:'2rem',cursor:'pointer'}} onClick={() => {
+              const emojis = ['🎓','👨‍💻','👩‍💻','🧑‍🔬','📚','🚀','⭐','🔬'];
+              const idx = emojis.indexOf(avatarEmoji);
+              setAvatarEmoji(emojis[(idx + 1) % emojis.length]);
+            }}>
+              {avatarEmoji}
+              <div style={{position:'absolute',bottom:0,right:0,width:'24px',height:'24px',borderRadius:'50%',background:'#1A6BFF',border:'2px solid #0A0E1A',display:'grid',placeItems:'center',fontSize:'0.65rem'}}>✏</div>
+            </div>
+            <div>
+              <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'0.95rem',letterSpacing:'-0.02em'}}>{profile.displayName || profile.name || 'Student'}</div>
+              <div style={{fontSize:'0.72rem',letterSpacing:'0.06em',textTransform:'uppercase',color:'#00E5C3',background:'rgba(0,229,195,.1)',border:'1px solid rgba(0,229,195,.2)',padding:'0.2rem 0.7rem',borderRadius:'99px',marginTop:'0.3rem'}}>Student</div>
+              <div style={{marginTop:'0.6rem'}}>
+                <div style={{fontSize:'0.7rem',color:'rgba(255,255,255,.45)',marginBottom:'0.3rem'}}>Profile {completion}% complete</div>
+                <div style={{width:'100%',background:'rgba(255,255,255,.06)',borderRadius:'99px',height:'4px',marginTop:'0.3rem'}}><div style={{height:'100%',borderRadius:'99px',background:'linear-gradient(90deg,#1A6BFF,#00E5C3)',width:`${completion}%`,transition:'width 0.6s cubic-bezier(.16,1,.3,1)'}}></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(255,255,255,.25)',padding:'0.8rem 0.5rem 0.3rem'}}>Profile Sections</div>
+          {['overview','academic','subjects','goals','learning','interests','availability'].map(s => (
+            <div key={s} onClick={() => setCurrentSection(s)} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection===s?'rgba(255,255,255,.85)':'rgba(255,255,255,.55)',cursor:'pointer',transition:'all 0.2s',background:currentSection===s?'rgba(26,107,255,.12)':'transparent',border:currentSection===s?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
+              <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection===s?'#1A6BFF':'rgba(255,255,255,.15)',flexShrink:0,transition:'all 0.2s'}}></span>
+              <span style={{fontSize:'1rem',width:'20px',textAlign:'center',flexShrink:0}}>{getIcon(s)}</span>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </div>
+          ))}
+          
+          <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(255,255,255,.25)',padding:'0.8rem 0.5rem 0.3rem',marginTop:'0.5rem'}}>Activity</div>
+          <div onClick={() => setCurrentSection('matching')} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection==='matching'?'rgba(255,255,255,.85)':'rgba(255,255,255,.55)',cursor:'pointer',transition:'all 0.2s',background:currentSection==='matching'?'rgba(26,107,255,.12)':'transparent',border:currentSection==='matching'?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
+            <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection==='matching'?'#1A6BFF':'rgba(255,255,255,.15)',flexShrink:0}}></span>
+            <span style={{fontSize:'1rem',width:'20px',textAlign:'center'}}>🔗</span>
+            Match Preview
+            <span style={{marginLeft:'auto',fontSize:'0.65rem',fontWeight:600,padding:'0.1rem 0.5rem',borderRadius:'99px',background:'rgba(26,107,255,.15)',color:'#38BFFF'}}>New</span>
+          </div>
+
+          <div style={{marginTop:'auto',paddingTop:'1rem'}}>
+            <button
+              onClick={() => setDeleteModalOpen(true)}
+              style={{width:'100%',padding:'0.6rem 0.8rem',borderRadius:'10px',border:'1px solid rgba(255,82,114,.35)',background:'rgba(255,82,114,.12)',color:'#ff98ad',cursor:'pointer',fontSize:'0.82rem',fontWeight:700}}
+            >
+              Delete Profile
+            </button>
+          </div>
+        </aside>
+
+        {/* MAIN */}
+        <main style={{padding:'2.5rem 3rem',height:'calc(100vh - 68px)',overflowY:'auto'}}>
+          {currentSection === 'overview' && renderOverview()}
+          {currentSection === 'academic' && renderAcademic()}
+          {currentSection === 'subjects' && renderSubjects()}
+          {currentSection === 'goals' && renderGoals()}
+          {currentSection === 'learning' && renderLearning()}
+          {currentSection === 'interests' && renderInterests()}
+          {currentSection === 'availability' && renderAvailability()}
+          {currentSection === 'matching' && renderMatching()}
+        </main>
+      </div>
+
+      {toast.show && (
+        <div style={{position:'fixed',bottom:'2rem',right:'2rem',zIndex:999,padding:'0.85rem 1.4rem',borderRadius:'12px',background:toast.isError?'rgba(255,82,114,.1)':'rgba(0,229,195,.12)',border:toast.isError?'1px solid rgba(255,82,114,.25)':'1px solid rgba(0,229,195,.25)',color:toast.isError?'#FF5272':'#00E5C3',fontSize:'0.85rem',fontWeight:500,display:'flex',alignItems:'center',gap:'0.6rem'}}>
+          ✓ {toast.msg}
+        </div>
+      )}
+
+      {detailsPopup.show && (
+        <div style={{position:'fixed',inset:0,background:'rgba(3,8,16,.72)',zIndex:1200,display:'grid',placeItems:'center',padding:'1rem'}} onClick={() => setDetailsPopup({ show: false, invitee: null, request: null })}>
+          <div style={{width:'min(560px, 92vw)',background:'#0e1a33',border:'1px solid rgba(255,255,255,.16)',borderRadius:'14px',padding:'1rem 1.1rem'}} onClick={(e) => e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.8rem'}}>
+              <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'1rem'}}>Match Details</div>
+              <button onClick={() => setDetailsPopup({ show: false, invitee: null, request: null })} style={{background:'transparent',border:'none',color:'rgba(255,255,255,.7)',cursor:'pointer'}}>✕</button>
+            </div>
+            <div style={{fontSize:'0.84rem',color:'rgba(255,255,255,.8)',marginBottom:'0.65rem'}}>
+              Member: <strong>{detailsPopup.invitee?.user?.name || 'Unknown'}</strong>
+            </div>
+            <div style={{fontSize:'0.82rem',color:'#38BFFF',marginBottom:'0.65rem'}}>
+              Matching Score: {Math.round((detailsPopup.invitee?.matchScore || 0) * 100)}%
+            </div>
+            <div style={{fontSize:'0.78rem',color:'rgba(255,255,255,.65)',marginBottom:'0.4rem'}}>Why this match:</div>
+            <ul style={{margin:'0 0 0.8rem 1rem',padding:0,color:'rgba(255,255,255,.85)',fontSize:'0.82rem',lineHeight:1.5}}>
+              {(detailsPopup.invitee?.reasons || []).length ? detailsPopup.invitee.reasons.map((r, i) => <li key={`${r}-${i}`}>{r}</li>) : <li>No detailed reasons available</li>}
+            </ul>
+            <div style={{fontSize:'0.76rem',color:'rgba(255,255,255,.4)'}}>Request status: {detailsPopup.request?.status || 'pending'} | Invitee status: {detailsPopup.invitee?.status || 'pending'}</div>
+          </div>
+        </div>
+      )}
+
+      {deleteModalOpen && (
+        <div style={{position:'fixed',inset:0,background:'rgba(3,8,16,.72)',zIndex:1300,display:'grid',placeItems:'center',padding:'1rem'}} onClick={closeDeleteModal}>
+          <div style={{width:'min(560px, 94vw)',background:'#0e1a33',border:'1px solid rgba(255,255,255,.16)',borderRadius:'14px',padding:'1rem 1.1rem'}} onClick={(e) => e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.8rem'}}>
+              <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'1rem'}}>Delete Profile</div>
+              <button onClick={closeDeleteModal} style={{background:'transparent',border:'none',color:'rgba(255,255,255,.7)',cursor:'pointer'}}>✕</button>
+            </div>
+
+            <div style={{fontSize:'0.82rem',color:'rgba(255,255,255,.75)',marginBottom:'0.8rem'}}>
+              Verify your identity with password or Face ID before deletion.
+            </div>
+
+            <div style={{display:'flex',gap:'0.55rem',marginBottom:'0.8rem'}}>
+              <button onClick={() => setDeleteMethod('password')} style={{padding:'0.45rem 0.75rem',borderRadius:'9px',border:'1px solid rgba(255,255,255,.15)',background:deleteMethod==='password'?'rgba(26,107,255,.2)':'rgba(255,255,255,.04)',color:'#fff',cursor:'pointer'}}>Password</button>
+              <button onClick={() => setDeleteMethod('face')} style={{padding:'0.45rem 0.75rem',borderRadius:'9px',border:'1px solid rgba(255,255,255,.15)',background:deleteMethod==='face'?'rgba(26,107,255,.2)':'rgba(255,255,255,.04)',color:'#fff',cursor:'pointer'}}>Face ID</button>
+            </div>
+
+            {deleteMethod === 'password' ? (
+              <div>
+                <input
+                  type='password'
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder='Enter your password'
+                  style={{width:'100%',padding:'0.65rem 0.75rem',borderRadius:'10px',border:'1px solid rgba(255,255,255,.15)',background:'rgba(255,255,255,.03)',color:'#fff'}}
+                />
+                <button onClick={deleteWithPassword} disabled={deleteBusy} style={{marginTop:'0.8rem',padding:'0.6rem 0.95rem',borderRadius:'10px',border:'1px solid rgba(255,82,114,.35)',background:'rgba(255,82,114,.18)',color:'#ffb3c1',cursor:'pointer',fontWeight:700}}>
+                  {deleteBusy ? 'Deleting...' : 'Delete Profile'}
+                </button>
+              </div>
+            ) : (
+              <div>
+                {!faceDeleteOpen ? (
+                  <button onClick={openFaceDelete} style={{padding:'0.6rem 0.95rem',borderRadius:'10px',border:'1px solid rgba(26,107,255,.35)',background:'rgba(26,107,255,.2)',color:'#cfe3ff',cursor:'pointer',fontWeight:600}}>
+                    Open Camera for Face ID
+                  </button>
+                ) : (
+                  <div>
+                    <video ref={videoRef} autoPlay muted playsInline style={{width:'100%',maxHeight:'260px',borderRadius:'10px',background:'#02070f',border:'1px solid rgba(255,255,255,.12)'}} />
+                    <div style={{display:'flex',gap:'0.55rem',marginTop:'0.7rem'}}>
+                      <button onClick={deleteWithFaceId} disabled={faceDeleteBusy} style={{padding:'0.55rem 0.85rem',borderRadius:'10px',border:'1px solid rgba(0,229,195,.35)',background:'rgba(0,229,195,.18)',color:'#9ff5e7',cursor:'pointer',fontWeight:700}}>
+                        {faceDeleteBusy ? 'Verifying...' : 'Verify Face and Delete'}
+                      </button>
+                      <button onClick={closeDeleteModal} style={{padding:'0.55rem 0.85rem',borderRadius:'10px',border:'1px solid rgba(255,255,255,.18)',background:'rgba(255,255,255,.05)',color:'#fff',cursor:'pointer'}}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(deleteError || faceDeleteError) && (
+              <div style={{marginTop:'0.7rem',fontSize:'0.8rem',color:'#ff8aa2'}}>{deleteError || faceDeleteError}</div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  function renderOverview() {
+    return (
+      <div style={{animation:'fadeIn 0.4s cubic-bezier(.16,1,.3,1)'}}>
+        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'2rem',gap:'1rem',flexWrap:'wrap'}}>
+          <div>
+            <div style={{fontFamily:'Syne',fontWeight:800,fontSize:'clamp(1.6rem,2.5vw,2.2rem)',letterSpacing:'-0.04em',marginBottom:'0.3rem'}}>Profile Overview</div>
+            <div style={{fontSize:'0.875rem',color:'rgba(255,255,255,.45)',fontWeight:300}}>Your academic identity on UniConnect</div>
+          </div>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'0.8rem',marginBottom:'1.5rem'}}>
+          <StatCard label="Year of Study" value={profile.year||'—'} />
+          <StatCard label="Subjects" value={profile.subjects?.length || 0} />
+          <StatCard label="Skills" value={profile.skills?.length || 0} />
+          <StatCard label="Goals Set" value={(profile.studyGoals?.length || 0) + (profile.careerGoals?.length || 0) + (profile.examGoals?.length || 0)} />
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+          <Card title="🎓 Academic Info">
+            <Field label="University" value={profile.university || '—'} />
+            <Field label="Degree Program" value={profile.degreeProgram || '—'} />
+            <Field label="Personality Type" value={profile.personalityType || '—'} />
+          </Card>
+          <Card title="🧠 Learning Profile">
+            <Field label="Learning Style" value={profile.learningStyle || '—'} />
+            <Field label="Study Mode" value={profile.studyMode || '—'} />
+            <Field label="Productivity Time" value={profile.productivityTime || '—'} />
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  function renderAcademic() {
+    const isEdit = editState.acad;
+    return (
+      <Section title="Academic Information" subtitle="Your university and degree details" onEdit={() => toggleEdit('acad')} isEdit={isEdit}>
+        <Card title="🎓 University Details">
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+            <FieldDisplay label="University" isEdit={isEdit} value={profile.university} onChange={(v) => setProfile({...profile, university: v})} onSave={() => saveFieldValue('university', profile.university)} placeholder="e.g. University of Melbourne" />
+            <FieldDisplay label="Degree Program" isEdit={isEdit} value={profile.degreeProgram} onChange={(v) => setProfile({...profile, degreeProgram: v})} onSave={() => saveFieldValue('degreeProgram', profile.degreeProgram)} placeholder="e.g. Bachelor of Computer Science" />
+            <FieldDisplay label="Year of Study" isEdit={isEdit} value={profile.year} onChange={(v) => setProfile({...profile, year: v})} onSave={() => saveFieldValue('year', profile.year)} isSelect range={['1','2','3','4','5','6']} />
+            <FieldDisplay label="Personality Type" isEdit={isEdit} value={profile.personalityType} onChange={(v) => setProfile({...profile, personalityType: v})} onSave={() => saveFieldValue('personalityType', profile.personalityType)} placeholder="e.g. INTJ" />
+          </div>
+        </Card>
+      </Section>
+    );
+  }
+
+  function renderSubjects() {
+    const isEdit = editState.subj;
+    return (
+      <Section title="Subjects & Skills" subtitle="What you study and what you're good at" onEdit={() => toggleEdit('subj')} isEdit={isEdit}>
+        <Card title="📘 Current Subjects">
+          {!isEdit ? (
+            <TagList items={profile.subjects} onRemove={(i) => removeTag('subjects', i)} />
+          ) : (
+            <TagInput onAdd={(val) => {addTag('subjects', val);}} />
+          )}
+        </Card>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+          <Card title="💪 Strong Subjects">
+            {!isEdit ? (
+              <TagList items={profile.strongSubjects} colorClass="green" onRemove={(i) => removeTag('strongSubjects', i)} />
+            ) : (
+              <TagInput onAdd={(val) => addTag('strongSubjects', val)} />
+            )}
+          </Card>
+          <Card title="⚠️ Weak Subjects">
+            {!isEdit ? (
+              <TagList items={profile.weakSubjects} colorClass="rose" onRemove={(i) => removeTag('weakSubjects', i)} />
+            ) : (
+              <TagInput onAdd={(val) => addTag('weakSubjects', val)} />
+            )}
+          </Card>
+        </div>
+
+        <Card title="⚡ Skills">
+          {!isEdit ? (
+            <TagList items={profile.skills} colorClass="purple" onRemove={(i) => removeTag('skills', i)} />
+          ) : (
+            <TagInput onAdd={(val) => addTag('skills', val)} />
+          )}
+        </Card>
+      </Section>
+    );
+  }
+
+  function renderGoals() {
+    const isEdit = editState.goals;
+    return (
+      <Section title="Goals" subtitle="What you're working towards" onEdit={() => toggleEdit('goals')} isEdit={isEdit}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+          <Card title="📖 Study Goals">
+            {!isEdit ? (
+              <TagList items={profile.studyGoals} onRemove={(i) => removeTag('studyGoals', i)} />
+            ) : (
+              <TagInput onAdd={(val) => addTag('studyGoals', val)} />
+            )}
+          </Card>
+          <Card title="🚀 Career Goals">
+            {!isEdit ? (
+              <TagList items={profile.careerGoals} colorClass="amber" onRemove={(i) => removeTag('careerGoals', i)} />
+            ) : (
+              <TagInput onAdd={(val) => addTag('careerGoals', val)} />
+            )}
+          </Card>
+        </div>
+        <Card title="📝 Exam Goals">
+          {!isEdit ? (
+            <TagList items={profile.examGoals} colorClass="green" onRemove={(i) => removeTag('examGoals', i)} />
+          ) : (
+            <TagInput onAdd={(val) => addTag('examGoals', val)} />
+          )}
+        </Card>
+      </Section>
+    );
+  }
+
+  function renderLearning() {
+    const isEdit = editState.learn;
+    const styles = {
+      opts: {display:'flex',flexWrap:'wrap',gap:'0.4rem',padding:'0.2rem 0'}
+    };
+    return (
+      <Section title="Learning Style" subtitle="How you study best" onEdit={() => toggleEdit('learn')} isEdit={isEdit}>
+        <Card title="🎯 Learning Style">
+          {!isEdit ? (
+            <div style={{fontSize:'0.9rem',color:profile.learningStyle?'#FFFFFF':'rgba(255,255,255,.2)',padding:'0.5rem 0',minHeight:'2rem'}}>{profile.learningStyle || 'Not set'}</div>
+          ) : (
+            <OptionGrid options={['👁 Visual','👂 Auditory','✋ Kinaesthetic','📖 Reading/Writing','🤝 Social','🔇 Solitary']} selected={profile.learningStyle} onChange={(val) => selectOption('learningStyle', cleanEmoji(val))} />
+          )}
+        </Card>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+          <Card title="⏰ Productivity Time">
+            {!isEdit ? (
+              <div style={{fontSize:'0.9rem',color:profile.productivityTime?'#FFFFFF':'rgba(255,255,255,.2)',padding:'0.5rem 0',minHeight:'2rem'}}>{profile.productivityTime || 'Not set'}</div>
+            ) : (
+              <OptionGrid options={['🌅 Early Morning','☀️ Morning','🌤 Afternoon','🌇 Evening','🌙 Night Owl']} selected={profile.productivityTime} onChange={(val) => selectOption('productivityTime', cleanEmoji(val))} />
+            )}
+          </Card>
+          <Card title="🏠 Study Mode">
+            {!isEdit ? (
+              <div style={{fontSize:'0.9rem',color:profile.studyMode?'#FFFFFF':'rgba(255,255,255,.2)',padding:'0.5rem 0',minHeight:'2rem'}}>{profile.studyMode || 'Not set'}</div>
+            ) : (
+              <OptionGrid options={['🤝 Group','👤 Solo','🔀 Mixed','💻 Online','🏛 In-person']} selected={profile.studyMode} onChange={(val) => selectOption('studyMode', cleanEmoji(val))} />
+            )}
+          </Card>
+        </div>
+      </Section>
+    );
+  }
+
+  function renderInterests() {
+    const isEdit = editState.interest;
+    return (
+      <Section title="Interests & Tags" subtitle="Helps surface compatible peers" onEdit={() => toggleEdit('interest')} isEdit={isEdit}>
+        <Card title="❤️ Interests">
+          {!isEdit ? (
+            <TagList items={profile.interests} colorClass="rose" onRemove={(i) => removeTag('interests', i)} />
+          ) : (
+            <TagInput onAdd={(val) => addTag('interests', val)} />
+          )}
+        </Card>
+        <Card title="🏷 Tags">
+          {!isEdit ? (
+            <TagList items={profile.tags} colorClass="amber" onRemove={(i) => removeTag('tags', i)} />
+          ) : (
+            <TagInput onAdd={(val) => addTag('tags', val)} />
+          )}
+        </Card>
+      </Section>
+    );
+  }
+
+  function renderAvailability() {
+    return (
+      <Section title="Availability" subtitle="When are you free to collaborate?" onSave={saveAvailability}>
+        <Card title="📅 Weekly Schedule">
+          <div style={{overflowX:'auto',minWidth:'480px'}}>
+            <div style={{display:'grid',gridTemplateColumns:'50px repeat(7,1fr)',gap:'4px'}}>
+              <div></div>
+              {days.map(d => <div key={d} style={{fontSize:'0.7rem',color:'rgba(255,255,255,.45)',textAlign:'center',padding:'0.2rem',fontWeight:600,letterSpacing:'0.04em'}}>{d}</div>)}
+              {times.map(t => (
+                <React.Fragment key={t}>
+                  <div style={{fontSize:'0.62rem',color:'rgba(255,255,255,.45)',textAlign:'center',padding:'0.2rem',fontWeight:600}}>{t}</div>
+                  {days.map(d => {
+                    const key = `${d}-${t}`;
+                    const isOn = profile.availability[key];
+                    return (
+                      <div 
+                        key={key} 
+                        onClick={() => toggleAvailability(d, t)}
+                        style={{height:'32px',borderRadius:'6px',background:isOn?'rgba(0,229,195,.12)':'rgba(255,255,255,.04)',border:isOn?'1px solid rgba(0,229,195,.3)':'1px solid rgba(255,255,255,.09)',display:'grid',placeItems:'center',fontSize:'0.65rem',color:isOn?'#00E5C3':'rgba(255,255,255,.2)',cursor:'pointer',transition:'all 0.2s'}}
+                      />
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          <p style={{fontSize:'0.75rem',color:'rgba(255,255,255,.25)',marginTop:'1rem'}}>Teal slots = available. Times shown in your local timezone.</p>
+        </Card>
+      </Section>
+    );
+  }
+
+  function renderMatching() {
+    const dims = [
+      {label:'Academic Match', pct: Math.min(profile.subjects.length * 12, 100)},
+      {label:'Goals Alignment', pct: Math.min((profile.studyGoals.length + profile.careerGoals.length) * 12, 100)},
+      {label:'Learning Style', pct: profile.learningStyle ? 100 : 0},
+      {label:'Schedule Fit', pct: Math.min(Object.values(profile.availability).filter(Boolean).length * 5, 100)},
+      {label:'Interests', pct: Math.min(profile.interests.length * 12, 100)}
+    ];
+
+    const suggestions = [
+      !profile.university && {icon:'🏛',text:'Add your university to match with same-campus peers'},
+      profile.subjects.length < 2 && {icon:'📚',text:'Add at least 2 subjects to improve academic matching'},
+      !profile.learningStyle && {icon:'🧠',text:'Set your learning style to find compatible study partners'},
+      profile.interests.length < 2 && {icon:'❤️',text:'Add interests — shared hobbies boost compatibility'},
+      !Object.values(profile.availability).some(v=>v) && {icon:'📅',text:'Mark your availability so peers can see when you\'re free'}
+    ].filter(Boolean);
+
+    return (
+      <div>
+        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'2rem',gap:'1rem',flexWrap:'wrap'}}>
+          <div>
+            <div style={{fontFamily:'Syne',fontWeight:800,fontSize:'clamp(1.6rem,2.5vw,2.2rem)',letterSpacing:'-0.04em',marginBottom:'0.3rem'}}>Match Preview</div>
+            <div style={{fontSize:'0.875rem',color:'rgba(255,255,255,.45)',fontWeight:300}}>How your profile scores against potential peers</div>
+          </div>
+        </div>
+
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'1.2rem 1.5rem',background:'linear-gradient(135deg,rgba(26,107,255,.08),rgba(0,229,195,.04))',border:'1px solid rgba(26,107,255,.15)',borderRadius:'12px',marginBottom:'1rem'}}>
+          <div>
+            <div style={{fontSize:'0.75rem',color:'rgba(255,255,255,.45)',marginBottom:'0.2rem'}}>Overall Match Score</div>
+            <div style={{fontFamily:'Syne',fontSize:'2rem',fontWeight:800,background:'linear-gradient(90deg,#1A6BFF,#00E5C3)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>{matchScore}%</div>
+            <div style={{fontSize:'0.75rem',color:'rgba(255,255,255,.3)',marginTop:'0.1rem'}}>Based on profile completeness</div>
+          </div>
+          <div style={{fontSize:'3rem'}}>🔗</div>
+        </div>
+
+        <Card title="📊 Matching Dimensions">
+          {dims.map((d, i) => (
+            <div key={i} style={{display:'flex',alignItems:'center',gap:'0.8rem',marginBottom:'0.8rem'}}>
+              <div style={{fontSize:'0.82rem',color:'rgba(255,255,255,.45)',width:'130px',flexShrink:0}}>{d.label}</div>
+              <div style={{flex:1,height:'5px',background:'rgba(255,255,255,.06)',borderRadius:'99px',overflow:'hidden'}}><div style={{height:'100%',borderRadius:'99px',background:'linear-gradient(90deg,#1A6BFF,#00E5C3)',width:`${d.pct}%`,transition:'width 0.8s cubic-bezier(.16,1,.3,1)'}}></div></div>
+              <div style={{fontSize:'0.75rem',color:'rgba(255,255,255,.45)',width:'30px',textAlign:'right',flexShrink:0}}>{Math.round(d.pct)}%</div>
+            </div>
+          ))}
+        </Card>
+
+        <Card title="💡 Tips to Improve Your Score">
+          <div style={{display:'flex',flexDirection:'column',gap:'0.7rem'}}>
+            {suggestions.slice(0, 4).map((s, i) => (
+              <div key={i} style={{display:'flex',alignItems:'flex-start',gap:'0.8rem',padding:'0.8rem 0',borderBottom:'1px solid rgba(255,255,255,.09)'}}>
+                <span style={{fontSize:'1.1rem'}}>{s.icon}</span>
+                <span style={{fontSize:'0.85rem',color:'rgba(255,255,255,.65)',lineHeight:1.5}}>{s.text}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* --- Need a Group section --- */}
+        <Card title="🔗 Need a Group" id="group">
+          {matches.length > 0 ? (
+            <div style={{display:'flex',flexDirection:'column',gap:'0.6rem',fontSize:'0.9rem'}}>
+              {matches.slice(0, 5).map((m,i) => {
+                const matchId = m.student?._id;
+                const selected = selectedMatchIds.includes(matchId);
+                return (
+                <div key={m.student?._id||i} style={{padding:'0.5rem',background:'rgba(255,255,255,.05)',borderRadius:'8px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div>
+                    <div style={{fontWeight:600}}>{m.student?.name || 'Unknown'}</div>
+                    <div style={{fontSize:'0.8rem',color:'rgba(255,255,255,.6)'}}>
+                      Score: {Math.round((m.score||0)*100)}%
+                      {m.student?.university && ` • ${m.student.university}`}
+                      {m.student?.degreeProgram && ` – ${m.student.degreeProgram}`}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => toggleMatchSelection(matchId)}
+                    style={{padding:'0.4rem 0.8rem',borderRadius:'8px',background:selected?'#00E5C3':'rgba(255,255,255,.08)',border:'1px solid rgba(255,255,255,.15)',color:selected?'#000':'#fff',cursor:'pointer',fontSize:'0.8rem'}}
+                  >
+                    {selected ? 'Selected' : 'Select'}
+                  </button>
+                </div>
+              );
+              })}
+            </div>
+          ) : (
+            <div style={{fontSize:'0.9rem',color:'rgba(255,255,255,.5)'}}>
+              {manualMatchChecked
+                ? 'Sorry, no matched students.'
+                : 'No group matches yet. Complete more profile sections (subjects, availability, interests) to generate matches.'}
+            </div>
+          )}
+          <div style={{fontSize:'0.78rem',color:'rgba(255,255,255,.5)',marginTop:'0.7rem'}}>
+            Selected: {selectedMatchIds.length}/4 members (maximum)
+          </div>
+          <button onClick={() => fetchMatches(true)} style={{marginTop:'1rem',padding:'0.7rem 1.4rem',borderRadius:'10px',background:'#1A6BFF',border:'none',color:'white',cursor:'pointer',fontWeight:500}}>Find Matching Members</button>
+          <button onClick={() => requestGrouping()} style={{marginTop:'0.6rem',padding:'0.7rem 1.4rem',borderRadius:'10px',background:'#00E5C3',border:'none',color:'#03121f',cursor:'pointer',fontWeight:700}}>Send Group Request</button>
+        </Card>
+
+        <Card title="📨 Group Requests">
+          {groupRequests.length === 0 ? (
+            <div style={{fontSize:'0.9rem',color:'rgba(255,255,255,.55)'}}>No group requests yet.</div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:'0.7rem'}}>
+              {groupRequests.map((req) => {
+                const mine = String(req.requestedBy?._id || req.requestedBy) === String(profile.user?._id || profile.user);
+                const myInvite = (req.invitees || []).find((i) => String(i.user?._id || i.user) === String(profile.user?._id || profile.user));
+                const pendingForMe = !mine && req.status === 'pending' && myInvite?.status === 'pending';
+                return (
+                  <div key={req._id} style={{padding:'0.8rem',background:'rgba(255,255,255,.05)',borderRadius:'10px',border:'1px solid rgba(255,255,255,.1)'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'0.5rem',marginBottom:'0.35rem'}}>
+                      <div style={{fontWeight:600,fontSize:'0.9rem'}}>
+                        {mine ? 'Request sent by you' : `Request from ${req.requestedBy?.name || 'member'}`}
+                      </div>
+                      <span style={{fontSize:'0.72rem',padding:'0.2rem 0.55rem',borderRadius:'99px',background:req.status==='grouped'?'rgba(0,229,195,.18)':'rgba(255,184,0,.15)',color:req.status==='grouped'?'#00E5C3':'#ffd369'}}>{req.status}</span>
+                    </div>
+                    <div style={{fontSize:'0.8rem',color:'rgba(255,255,255,.65)',marginBottom:'0.5rem'}}>
+                      Members invited: {(req.invitees || []).map((i) => i.user?.name || 'User').join(', ')}
+                    </div>
+                    <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap'}}>
+                      {(req.invitees || []).map((invitee) => (
+                        <button
+                          key={invitee.user?._id || invitee.user}
+                          onClick={() => setDetailsPopup({ show: true, invitee, request: req })}
+                          style={{padding:'0.35rem 0.65rem',borderRadius:'8px',border:'1px solid rgba(255,255,255,.15)',background:'rgba(255,255,255,.04)',color:'#fff',cursor:'pointer',fontSize:'0.74rem'}}
+                        >
+                          Details: {invitee.user?.name || 'Member'}
+                        </button>
+                      ))}
+                    </div>
+
+                    {pendingForMe && (
+                      <div style={{display:'flex',gap:'0.6rem',marginTop:'0.7rem'}}>
+                        <button onClick={() => respondToRequest(req._id, 'accept')} style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'#00E5C3',border:'none',color:'#03121f',cursor:'pointer',fontWeight:700}}>Accept</button>
+                        <button onClick={() => respondToRequest(req._id, 'reject')} style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'rgba(255,82,114,.15)',border:'1px solid rgba(255,82,114,.35)',color:'#ff8aa2',cursor:'pointer',fontWeight:600}}>Ignore</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  }
+}
+
+// Helper Components
+const Card = ({title, children}) => (
+  <div style={{background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.09)',borderRadius:'16px',padding:'1.8rem',marginBottom:'1.2rem',backdropFilter:'blur(10px)',transition:'border-color 0.3s'}}>
+    {title && <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'0.95rem',letterSpacing:'-0.01em',marginBottom:'1.2rem',display:'flex',alignItems:'center',gap:'0.6rem'}}>{title}</div>}
+    {children}
+  </div>
+);
+
+const Section = ({title, subtitle, children, onEdit, isEdit, onSave}) => (
+  <div style={{animation:'fadeIn 0.4s cubic-bezier(.16,1,.3,1)'}}>
+    <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'2rem',gap:'1rem',flexWrap:'wrap'}}>
+      <div>
+        <div style={{fontFamily:'Syne',fontWeight:800,fontSize:'clamp(1.6rem,2.5vw,2.2rem)',letterSpacing:'-0.04em',marginBottom:'0.3rem'}}>{title}</div>
+        <div style={{fontSize:'0.875rem',color:'rgba(255,255,255,.45)',fontWeight:300}}>{subtitle}</div>
+      </div>
+      {onEdit && <button onClick={onEdit} style={{padding:'0.6rem 1.3rem',borderRadius:'10px',fontSize:'0.85rem',fontWeight:500,background:isEdit?'linear-gradient(135deg,#1A6BFF,#3a8bff)':'rgba(255,255,255,.05)',border:isEdit?'none':'1px solid rgba(255,255,255,.09)',color:'white',cursor:'pointer',transition:'all 0.25s'}}>{isEdit?'💾 Save':'✏ Edit'}</button>}
+      {onSave && <button onClick={onSave} style={{padding:'0.6rem 1.3rem',borderRadius:'10px',fontSize:'0.85rem',fontWeight:500,background:'linear-gradient(135deg,#1A6BFF,#3a8bff)',border:'none',color:'white',cursor:'pointer',boxShadow:'0 6px 24px rgba(26,107,255,.3)',transition:'all 0.25s'}}>💾 Save</button>}
+    </div>
+    {children}
+  </div>
+);
+
+const Field = ({label, value}) => (
+  <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',marginBottom:'0.8rem'}}>
+    <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'rgba(255,255,255,.4)'}}>{label}</label>
+    <div style={{fontSize:'0.9rem',color:'#FFFFFF',padding:'0.5rem 0',borderBottom:'1px solid transparent',minHeight:'2rem',lineHeight:1.5}} className={value && value !== '—' ? '' : 'empty'}>{value || '—'}</div>
+  </div>
+);
+
+const FieldDisplay = ({label, isEdit, value, onChange, onSave, placeholder, isSelect, range}) => (
+  <div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>
+    <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'rgba(255,255,255,.4)'}}>{label}</label>
+    {!isEdit ? (
+      <div style={{fontSize:'0.9rem',color:'#FFFFFF',padding:'0.5rem 0',borderBottom:'1px solid transparent',minHeight:'2rem',lineHeight:1.5}}>{value || '—'}</div>
+    ) : isSelect ? (
+      <select style={{width:'100%',padding:'0.72rem 1rem',background:'rgba(255,255,255,.04)',border:'1.5px solid rgba(255,255,255,.09)',borderRadius:'9px',color:'#FFFFFF',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} value={value || ''} onChange={(e) => onChange(e.target.value)} onBlur={onSave}>
+        <option value="">Select...</option>
+        {range && range.map(r => <option key={r}>{r}</option>)}
+      </select>
+    ) : (
+      <input style={{width:'100%',padding:'0.72rem 1rem',background:'rgba(255,255,255,.04)',border:'1.5px solid rgba(255,255,255,.09)',borderRadius:'9px',color:'#FFFFFF',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} type="text" placeholder={placeholder} value={value || ''} onChange={(e) => onChange(e.target.value)} onBlur={onSave} />
+    )}
+  </div>
+);
+
+const TagList = ({items, colorClass, onRemove}) => (
+  <div style={{display:'flex',flexWrap:'wrap',gap:'0.4rem',padding:'0.3rem 0'}}>
+    {(items && items.length > 0) ? items.map((t, i) => <TagDisplay key={i} text={t} colorClass={colorClass} onRemove={() => onRemove(i)} />) : <span style={{fontSize:'0.82rem',fontStyle:'italic',color:'rgba(255,255,255,.2)'}}>None added</span>}
+  </div>
+);
+
+const TagDisplay = ({text, colorClass='', onRemove}) => {
+  const colors = {green:'rgba(0,229,195,.08)', amber:'rgba(255,184,0,.08)', rose:'rgba(255,82,114,.08)', purple:'rgba(138,80,255,.08)'};
+  const borderColors = {green:'rgba(0,229,195,.2)', amber:'rgba(255,184,0,.2)', rose:'rgba(255,82,114,.2)', purple:'rgba(138,80,255,.2)'};
+  const textColors = {green:'#00E5C3', amber:'#FFB800', rose:'#FF5272', purple:'#b98bff'};
+  return (
+    <span style={{padding:'0.25rem 0.75rem',borderRadius:'99px',fontSize:'0.76rem',fontWeight:500,background:colors[colorClass]||'rgba(26,107,255,.1)',border:`1px solid ${borderColors[colorClass]||'rgba(26,107,255,.2)'}`,color:textColors[colorClass]||'#38BFFF',display:'inline-flex',alignItems:'center',gap:'0.4rem'}}>
+      {text}
+      <button onClick={onRemove} style={{cursor:'pointer',opacity:0.5,fontSize:'0.75rem',transition:'opacity 0.2s',lineHeight:1,background:'none',border:'none',color:'inherit'}}>✕</button>
+    </span>
+  );
+};
+
+const TagInput = ({onAdd}) => {
+  const [val, setVal] = React.useState('');
+  return (
+    <div style={{display:'flex',gap:'0.5rem',marginTop:'0.5rem'}}>
+      <input style={{flex:1,padding:'0.72rem 1rem',background:'rgba(255,255,255,.04)',border:'1.5px solid rgba(255,255,255,.09)',borderRadius:'9px',color:'#FFFFFF',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} type="text" placeholder="Add..." value={val} onChange={e=>setVal(e.target.value)} onKeyPress={(e)=>{if(e.key==='Enter'){onAdd(val);setVal('');}}} />
+      <button onClick={()=>{onAdd(val);setVal('');}} style={{padding:'0.6rem 0.9rem',borderRadius:'8px',fontSize:'0.8rem',background:'#1A6BFF',border:'none',color:'white',cursor:'pointer',fontWeight:500,whiteSpace:'nowrap'}}>+ Add</button>
+    </div>
+  );
+};
+
+const OptionGrid = ({options, selected, onChange}) => (
+  <div style={{display:'flex',flexWrap:'wrap',gap:'0.4rem',padding:'0.2rem 0'}}>
+    {options.map((opt, i) => (
+      <button 
+        key={i}
+        onClick={() => onChange(opt)}
+        style={{padding:'0.4rem 0.9rem',borderRadius:'8px',fontSize:'0.8rem',fontWeight:500,background:cleanEmoji(opt)===selected?'rgba(26,107,255,.12)':'rgba(255,255,255,.04)',border:cleanEmoji(opt)===selected?'1.5px solid #1A6BFF':'1.5px solid rgba(255,255,255,.09)',color:cleanEmoji(opt)===selected?'#FFFFFF':'rgba(255,255,255,.55)',cursor:'pointer',transition:'all 0.2s'}}
+      >
+        {opt}
+      </button>
+    ))}
+  </div>
+);
+
+const StatCard = ({label, value}) => (
+  <div style={{padding:'1.2rem',background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.09)',borderRadius:'12px',textAlign:'center'}}>
+    <div style={{fontFamily:'Syne',fontSize:'1.6rem',fontWeight:800,letterSpacing:'-0.04em',background:'linear-gradient(120deg,#FFFFFF,#38BFFF)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>{value}</div>
+    <div style={{fontSize:'0.7rem',color:'rgba(255,255,255,.3)',marginTop:'0.15rem',letterSpacing:'0.03em'}}>{label}</div>
+  </div>
+);
+
+function getIcon(section) {
+  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅'};
+  return icons[section] || '⚙';
+}
+
+function cleanEmoji(str) {
+  return str.replace(/^[\p{Emoji}\s]+/u,'').trim();
+}
+
+function getStyles() {
+  return `
+    :root {
+      --ink: #0A0E1A;
+      --azure: #1A6BFF;
+      --aqua: #00E5C3;
+      --muted: rgba(255,255,255,.45);
+      --glass: rgba(255,255,255,.05);
+      --border: rgba(255,255,255,.09);
+      --white: #FFFFFF;
+    }
+    * { box-sizing: border-box; }
+    body { background: var(--ink); color: var(--white); margin: 0; padding: 0; }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background-image:
+        linear-gradient(rgba(26,107,255,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(26,107,255,.04) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+    }
+    .orb { position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; }
+    @keyframes d1 { to { transform: translate(40px, 60px); } }
+    @keyframes d2 { to { transform: translate(-30px, -40px); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } }
+    .empty { color: rgba(255,255,255,.2) !important; font-style: italic; }
+    input:focus, select:focus { border-color: var(--azure) !important; background: rgba(26,107,255,.06) !important; }
+    select option { background: #0D1730; color: white; }
+  `;
+}
