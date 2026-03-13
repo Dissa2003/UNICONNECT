@@ -1,0 +1,113 @@
+# -----------------------------
+# Dependencies
+# -----------------------------
+node_modules/
+**/node_modules/
+
+# -----------------------------
+# Environment and secrets
+# -----------------------------
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# API keys, private keys, certs
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.csr
+*.der
+*.jks
+*.keystore
+id_rsa
+id_dsa
+
+# Secret/config files often created locally
+secrets.json
+secret.json
+credentials.json
+firebase-service-account*.json
+service-account*.json
+
+# -----------------------------
+# Logs and debug artifacts
+# -----------------------------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# -----------------------------
+# Build output / coverage
+# -----------------------------
+dist/
+build/
+coverage/
+.nyc_output/
+
+# -----------------------------
+# Runtime / temporary files
+# -----------------------------
+*.pid
+*.seed
+*.tmp
+*.temp
+tmp/
+temp/
+.cache/
+
+# -----------------------------
+# Python cache and virtual envs
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# -----------------------------
+# Databases and dumps
+# -----------------------------
+*.sqlite
+*.sqlite3
+*.db
+*.bak
+*.dump
+*.sql
+*.gz
+*.zip
+*.7z
+
+# -----------------------------
+# Sensitive uploads / biometric and generated attendance data
+# -----------------------------
+backend/face_ID_for_login/Attendence/
+backend/face_ID_for_login/uploads/
+backend/face_ID_for_login/faces/
+backend/face_ID_for_login/data/*.csv
+backend/face_ID_for_login/data/*.jpg
+backend/face_ID_for_login/data/*.jpeg
+backend/face_ID_for_login/data/*.png
+
+# -----------------------------
+# OS / editor files
+# -----------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
