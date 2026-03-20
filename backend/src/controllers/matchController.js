@@ -175,9 +175,30 @@ const respondToGroupRequest = async (req, res) => {
   }
 };
 
+const deleteGroupRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    const requestDoc = await GroupRequest.findById(requestId);
+    if (!requestDoc) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    if (String(requestDoc.requestedBy) !== String(req.user.id)) {
+      return res.status(403).json({ message: "Only the main requester can delete this request" });
+    }
+
+    await GroupRequest.findByIdAndDelete(requestId);
+    return res.json({ message: "Request deleted" });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   getTopMatches,
   createGroupRequest,
   getMyGroupRequests,
   respondToGroupRequest,
+  deleteGroupRequest,
 };

@@ -246,7 +246,10 @@ export default function Login() {
         setFaceInfo('Face captured successfully. Continue registration now.');
         setTimeout(() => closeFaceScanner(), 600);
       } else {
-        const payload = { faceDescriptor: descriptor };
+        const payload = {
+          faceDescriptor: descriptor,
+          role: loginRole
+        };
         if (loginEmail.trim()) {
           payload.email = loginEmail.trim();
         }
@@ -255,8 +258,9 @@ export default function Login() {
           ...payload
         });
 
-        const { token, role } = res.data;
+        const { token, role, availableRoles } = res.data;
         localStorage.setItem('token', token);
+        localStorage.setItem('availableRoles', JSON.stringify(Array.isArray(availableRoles) ? availableRoles : [role]));
         window.dispatchEvent(new Event('auth-changed'));
         closeFaceScanner();
         setOverlay({ show: true, title: 'Smart Login successful', msg: 'Redirecting to your dashboard…' });
@@ -278,9 +282,14 @@ export default function Login() {
 
     setLoginLoading(true);
     try {
-      const res = await api.post('/auth/login', { email: loginEmail, password: loginPass });
-      const { token, role } = res.data;
+      const res = await api.post('/auth/login', {
+        email: loginEmail,
+        password: loginPass,
+        role: loginRole
+      });
+      const { token, role, availableRoles } = res.data;
       localStorage.setItem('token', token);
+      localStorage.setItem('availableRoles', JSON.stringify(Array.isArray(availableRoles) ? availableRoles : [role]));
       window.dispatchEvent(new Event('auth-changed'));
       setOverlay({ show: true, title: 'Welcome back!', msg: 'Redirecting to your dashboard…' });
       setTimeout(() => {
