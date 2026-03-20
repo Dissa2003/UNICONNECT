@@ -23,6 +23,16 @@ const UserSchema = new mongoose.Schema({
     default: "student"
   },
 
+  roles: {
+    type: [
+      {
+        type: String,
+        enum: ["admin", "tutor", "student"]
+      }
+    ],
+    default: ["student"]
+  },
+
   tokenVersion: {
     type: Number,
     default: 0

@@ -1,6 +1,32 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
+function normalizeRole(rawRole) {
+  if (typeof rawRole !== "string") {
+    return null;
+  }
+
+  const role = rawRole.trim().toLowerCase();
+  if (["student", "tutor", "admin"].includes(role)) {
+    return role;
+  }
+
+  return null;
+}
+
+function getUserRoles(user) {
+  const roles = Array.isArray(user.roles)
+    ? user.roles.map((r) => normalizeRole(r)).filter(Boolean)
+    : [];
+
+  if (roles.length > 0) {
+    return Array.from(new Set(roles));
+  }
+
+  const legacyRole = normalizeRole(user.role);
+  return legacyRole ? [legacyRole] : [];
+}
+
 exports.protect = async (req, res, next) => {
   let token;
 
@@ -14,7 +40,7 @@ exports.protect = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, "secretkey");
-    const dbUser = await User.findById(decoded.id).select("_id role tokenVersion");
+    const dbUser = await User.findById(decoded.id).select("_id role roles tokenVersion");
     if (!dbUser) {
       return res.status(401).json({ message: "Token invalid" });
     }
@@ -23,9 +49,17 @@ exports.protect = async (req, res, next) => {
       return res.status(401).json({ message: "Token expired. Please login again." });
     }
 
+    const availableRoles = getUserRoles(dbUser);
+    const tokenRole = normalizeRole(decoded.role) || normalizeRole(dbUser.role) || availableRoles[0];
+
+    if (!tokenRole || !availableRoles.includes(tokenRole)) {
+      return res.status(401).json({ message: "Token role is no longer valid. Please login again." });
+    }
+
     req.user = {
       id: dbUser._id.toString(),
-      role: dbUser.role,
+      role: tokenRole,
+      availableRoles,
       tokenVersion: dbUser.tokenVersion
     };
     next();

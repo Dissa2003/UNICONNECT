@@ -32,6 +32,7 @@ function AppWrapper() {
     const LOGOUT_TIME = 15 * 60 * 1000; // 15 minutes
     const logout = () => {
       localStorage.removeItem('token');
+      localStorage.removeItem('availableRoles');
       navigate('/login');
     };
     const reset = () => {

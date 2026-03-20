@@ -46,20 +46,14 @@ export default function StudentDashboard(){
     loadProfile();
   }, []);
 
-  // when profile arrives, fetch matching group info and request list
+  // when profile first arrives (has an _id) fetch only group request list
+  const hasFetchedGroupRequestsRef = useRef(false);
   useEffect(() => {
     if (!profile || !profile._id) return;
-    fetchMatches();
+    if (hasFetchedGroupRequestsRef.current) return;
+    hasFetchedGroupRequestsRef.current = true;
     fetchGroupRequests();
-  }, [profile]);
-
-  // when matches update show a toast and optionally navigate to matching section
-  useEffect(() => {
-    if (matches.length > 0 && currentSection !== 'matching') {
-      showToast(`${matches.length} potential match${matches.length>1?'es':''} found`);
-      setCurrentSection('matching');
-    }
-  }, [matches]);
+  }, [profile._id]);
 
   // custom cursor and hover animations (match Login/HomePage behavior)
   // run again when loading finishes so that the cursor elements are in the DOM
@@ -381,6 +375,16 @@ export default function StudentDashboard(){
     }
   };
 
+  const deleteGroupRequest = async (requestId) => {
+    try {
+      await api.delete(`/match/group-requests/${requestId}`);
+      fetchGroupRequests();
+      showToast('Request deleted');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to delete request', true);
+    }
+  };
+
   const updateCompletion = () => {
     const fields = [
       {key:'university'}, {key:'degreeProgram'}, {key:'year'},
@@ -633,36 +637,24 @@ export default function StudentDashboard(){
     return (
       <Section title="Subjects & Skills" subtitle="What you study and what you're good at" onEdit={() => toggleEdit('subj')} isEdit={isEdit}>
         <Card title="📘 Current Subjects">
-          {!isEdit ? (
-            <TagList items={profile.subjects} onRemove={(i) => removeTag('subjects', i)} />
-          ) : (
-            <TagInput onAdd={(val) => {addTag('subjects', val);}} />
-          )}
+          <TagList items={profile.subjects} onRemove={(i) => removeTag('subjects', i)} />
+          {isEdit && <TagInput onAdd={(val) => {addTag('subjects', val);}} />}
         </Card>
 
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
           <Card title="💪 Strong Subjects">
-            {!isEdit ? (
-              <TagList items={profile.strongSubjects} colorClass="green" onRemove={(i) => removeTag('strongSubjects', i)} />
-            ) : (
-              <TagInput onAdd={(val) => addTag('strongSubjects', val)} />
-            )}
+            <TagList items={profile.strongSubjects} colorClass="green" onRemove={(i) => removeTag('strongSubjects', i)} />
+            {isEdit && <TagInput onAdd={(val) => addTag('strongSubjects', val)} />}
           </Card>
           <Card title="⚠️ Weak Subjects">
-            {!isEdit ? (
-              <TagList items={profile.weakSubjects} colorClass="rose" onRemove={(i) => removeTag('weakSubjects', i)} />
-            ) : (
-              <TagInput onAdd={(val) => addTag('weakSubjects', val)} />
-            )}
+            <TagList items={profile.weakSubjects} colorClass="rose" onRemove={(i) => removeTag('weakSubjects', i)} />
+            {isEdit && <TagInput onAdd={(val) => addTag('weakSubjects', val)} />}
           </Card>
         </div>
 
         <Card title="⚡ Skills">
-          {!isEdit ? (
-            <TagList items={profile.skills} colorClass="purple" onRemove={(i) => removeTag('skills', i)} />
-          ) : (
-            <TagInput onAdd={(val) => addTag('skills', val)} />
-          )}
+          <TagList items={profile.skills} colorClass="purple" onRemove={(i) => removeTag('skills', i)} />
+          {isEdit && <TagInput onAdd={(val) => addTag('skills', val)} />}
         </Card>
       </Section>
     );
@@ -674,26 +666,17 @@ export default function StudentDashboard(){
       <Section title="Goals" subtitle="What you're working towards" onEdit={() => toggleEdit('goals')} isEdit={isEdit}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
           <Card title="📖 Study Goals">
-            {!isEdit ? (
-              <TagList items={profile.studyGoals} onRemove={(i) => removeTag('studyGoals', i)} />
-            ) : (
-              <TagInput onAdd={(val) => addTag('studyGoals', val)} />
-            )}
+            <TagList items={profile.studyGoals} onRemove={(i) => removeTag('studyGoals', i)} />
+            {isEdit && <TagInput onAdd={(val) => addTag('studyGoals', val)} />}
           </Card>
           <Card title="🚀 Career Goals">
-            {!isEdit ? (
-              <TagList items={profile.careerGoals} colorClass="amber" onRemove={(i) => removeTag('careerGoals', i)} />
-            ) : (
-              <TagInput onAdd={(val) => addTag('careerGoals', val)} />
-            )}
+            <TagList items={profile.careerGoals} colorClass="amber" onRemove={(i) => removeTag('careerGoals', i)} />
+            {isEdit && <TagInput onAdd={(val) => addTag('careerGoals', val)} />}
           </Card>
         </div>
         <Card title="📝 Exam Goals">
-          {!isEdit ? (
-            <TagList items={profile.examGoals} colorClass="green" onRemove={(i) => removeTag('examGoals', i)} />
-          ) : (
-            <TagInput onAdd={(val) => addTag('examGoals', val)} />
-          )}
+          <TagList items={profile.examGoals} colorClass="green" onRemove={(i) => removeTag('examGoals', i)} />
+          {isEdit && <TagInput onAdd={(val) => addTag('examGoals', val)} />}
         </Card>
       </Section>
     );
@@ -738,18 +721,12 @@ export default function StudentDashboard(){
     return (
       <Section title="Interests & Tags" subtitle="Helps surface compatible peers" onEdit={() => toggleEdit('interest')} isEdit={isEdit}>
         <Card title="❤️ Interests">
-          {!isEdit ? (
-            <TagList items={profile.interests} colorClass="rose" onRemove={(i) => removeTag('interests', i)} />
-          ) : (
-            <TagInput onAdd={(val) => addTag('interests', val)} />
-          )}
+          <TagList items={profile.interests} colorClass="rose" onRemove={(i) => removeTag('interests', i)} />
+          {isEdit && <TagInput onAdd={(val) => addTag('interests', val)} />}
         </Card>
         <Card title="🏷 Tags">
-          {!isEdit ? (
-            <TagList items={profile.tags} colorClass="amber" onRemove={(i) => removeTag('tags', i)} />
-          ) : (
-            <TagInput onAdd={(val) => addTag('tags', val)} />
-          )}
+          <TagList items={profile.tags} colorClass="amber" onRemove={(i) => removeTag('tags', i)} />
+          {isEdit && <TagInput onAdd={(val) => addTag('tags', val)} />}
         </Card>
       </Section>
     );
@@ -907,6 +884,7 @@ export default function StudentDashboard(){
                     <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap'}}>
                       {(req.invitees || []).map((invitee) => (
                         <button
+                          type="button"
                           key={invitee.user?._id || invitee.user}
                           onClick={() => setDetailsPopup({ show: true, invitee, request: req })}
                           style={{padding:'0.35rem 0.65rem',borderRadius:'8px',border:'1px solid rgba(255,255,255,.15)',background:'rgba(255,255,255,.04)',color:'#fff',cursor:'pointer',fontSize:'0.74rem'}}
@@ -916,10 +894,22 @@ export default function StudentDashboard(){
                       ))}
                     </div>
 
+                    {mine && req.status === 'pending' && (
+                      <div style={{display:'flex',gap:'0.6rem',marginTop:'0.7rem'}}>
+                        <button
+                          type="button"
+                          onClick={() => deleteGroupRequest(req._id)}
+                          style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'rgba(255,82,114,.15)',border:'1px solid rgba(255,82,114,.35)',color:'#ff8aa2',cursor:'pointer',fontWeight:600}}
+                        >
+                          Delete Request
+                        </button>
+                      </div>
+                    )}
+
                     {pendingForMe && (
                       <div style={{display:'flex',gap:'0.6rem',marginTop:'0.7rem'}}>
-                        <button onClick={() => respondToRequest(req._id, 'accept')} style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'#00E5C3',border:'none',color:'#03121f',cursor:'pointer',fontWeight:700}}>Accept</button>
-                        <button onClick={() => respondToRequest(req._id, 'reject')} style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'rgba(255,82,114,.15)',border:'1px solid rgba(255,82,114,.35)',color:'#ff8aa2',cursor:'pointer',fontWeight:600}}>Ignore</button>
+                        <button type="button" onClick={() => respondToRequest(req._id, 'accept')} style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'#00E5C3',border:'none',color:'#03121f',cursor:'pointer',fontWeight:700}}>Accept</button>
+                        <button type="button" onClick={() => respondToRequest(req._id, 'reject')} style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'rgba(255,82,114,.15)',border:'1px solid rgba(255,82,114,.35)',color:'#ff8aa2',cursor:'pointer',fontWeight:600}}>Ignore</button>
                       </div>
                     )}
                   </div>
@@ -948,8 +938,8 @@ const Section = ({title, subtitle, children, onEdit, isEdit, onSave}) => (
         <div style={{fontFamily:'Syne',fontWeight:800,fontSize:'clamp(1.6rem,2.5vw,2.2rem)',letterSpacing:'-0.04em',marginBottom:'0.3rem'}}>{title}</div>
         <div style={{fontSize:'0.875rem',color:'rgba(255,255,255,.45)',fontWeight:300}}>{subtitle}</div>
       </div>
-      {onEdit && <button onClick={onEdit} style={{padding:'0.6rem 1.3rem',borderRadius:'10px',fontSize:'0.85rem',fontWeight:500,background:isEdit?'linear-gradient(135deg,#1A6BFF,#3a8bff)':'rgba(255,255,255,.05)',border:isEdit?'none':'1px solid rgba(255,255,255,.09)',color:'white',cursor:'pointer',transition:'all 0.25s'}}>{isEdit?'💾 Save':'✏ Edit'}</button>}
-      {onSave && <button onClick={onSave} style={{padding:'0.6rem 1.3rem',borderRadius:'10px',fontSize:'0.85rem',fontWeight:500,background:'linear-gradient(135deg,#1A6BFF,#3a8bff)',border:'none',color:'white',cursor:'pointer',boxShadow:'0 6px 24px rgba(26,107,255,.3)',transition:'all 0.25s'}}>💾 Save</button>}
+      {onEdit && <button type="button" onClick={onEdit} style={{padding:'0.6rem 1.3rem',borderRadius:'10px',fontSize:'0.85rem',fontWeight:500,background:isEdit?'linear-gradient(135deg,#1A6BFF,#3a8bff)':'rgba(255,255,255,.05)',border:isEdit?'none':'1px solid rgba(255,255,255,.09)',color:'white',cursor:'pointer',transition:'all 0.25s'}}>{isEdit?'💾 Save':'✏ Edit'}</button>}
+      {onSave && <button type="button" onClick={onSave} style={{padding:'0.6rem 1.3rem',borderRadius:'10px',fontSize:'0.85rem',fontWeight:500,background:'linear-gradient(135deg,#1A6BFF,#3a8bff)',border:'none',color:'white',cursor:'pointer',boxShadow:'0 6px 24px rgba(26,107,255,.3)',transition:'all 0.25s'}}>💾 Save</button>}
     </div>
     {children}
   </div>
@@ -991,7 +981,7 @@ const TagDisplay = ({text, colorClass='', onRemove}) => {
   return (
     <span style={{padding:'0.25rem 0.75rem',borderRadius:'99px',fontSize:'0.76rem',fontWeight:500,background:colors[colorClass]||'rgba(26,107,255,.1)',border:`1px solid ${borderColors[colorClass]||'rgba(26,107,255,.2)'}`,color:textColors[colorClass]||'#38BFFF',display:'inline-flex',alignItems:'center',gap:'0.4rem'}}>
       {text}
-      <button onClick={onRemove} style={{cursor:'pointer',opacity:0.5,fontSize:'0.75rem',transition:'opacity 0.2s',lineHeight:1,background:'none',border:'none',color:'inherit'}}>✕</button>
+      <button type="button" onClick={onRemove} style={{cursor:'pointer',opacity:0.5,fontSize:'0.75rem',transition:'opacity 0.2s',lineHeight:1,background:'none',border:'none',color:'inherit'}}>✕</button>
     </span>
   );
 };
@@ -1000,8 +990,8 @@ const TagInput = ({onAdd}) => {
   const [val, setVal] = React.useState('');
   return (
     <div style={{display:'flex',gap:'0.5rem',marginTop:'0.5rem'}}>
-      <input style={{flex:1,padding:'0.72rem 1rem',background:'rgba(255,255,255,.04)',border:'1.5px solid rgba(255,255,255,.09)',borderRadius:'9px',color:'#FFFFFF',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} type="text" placeholder="Add..." value={val} onChange={e=>setVal(e.target.value)} onKeyPress={(e)=>{if(e.key==='Enter'){onAdd(val);setVal('');}}} />
-      <button onClick={()=>{onAdd(val);setVal('');}} style={{padding:'0.6rem 0.9rem',borderRadius:'8px',fontSize:'0.8rem',background:'#1A6BFF',border:'none',color:'white',cursor:'pointer',fontWeight:500,whiteSpace:'nowrap'}}>+ Add</button>
+      <input style={{flex:1,padding:'0.72rem 1rem',background:'rgba(255,255,255,.04)',border:'1.5px solid rgba(255,255,255,.09)',borderRadius:'9px',color:'#FFFFFF',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} type="text" placeholder="Add..." value={val} onChange={e=>setVal(e.target.value)} onKeyPress={(e)=>{if(e.key==='Enter'){e.preventDefault();onAdd(val);setVal('');}}} />
+      <button type="button" onClick={()=>{onAdd(val);setVal('');}} style={{padding:'0.6rem 0.9rem',borderRadius:'8px',fontSize:'0.8rem',background:'#1A6BFF',border:'none',color:'white',cursor:'pointer',fontWeight:500,whiteSpace:'nowrap'}}>+ Add</button>
     </div>
   );
 };
@@ -1010,6 +1000,7 @@ const OptionGrid = ({options, selected, onChange}) => (
   <div style={{display:'flex',flexWrap:'wrap',gap:'0.4rem',padding:'0.2rem 0'}}>
     {options.map((opt, i) => (
       <button 
+        type="button"
         key={i}
         onClick={() => onChange(opt)}
         style={{padding:'0.4rem 0.9rem',borderRadius:'8px',fontSize:'0.8rem',fontWeight:500,background:cleanEmoji(opt)===selected?'rgba(26,107,255,.12)':'rgba(255,255,255,.04)',border:cleanEmoji(opt)===selected?'1.5px solid #1A6BFF':'1.5px solid rgba(255,255,255,.09)',color:cleanEmoji(opt)===selected?'#FFFFFF':'rgba(255,255,255,.55)',cursor:'pointer',transition:'all 0.2s'}}

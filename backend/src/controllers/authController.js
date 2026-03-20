@@ -1,6 +1,8 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const StudentProfile = require("../models/StudentProfile");
+const TutorProfile = require("../models/TutorProfile");
 
 function sanitizeFaceDescriptor(rawDescriptor) {
   if (!Array.isArray(rawDescriptor)) {
@@ -12,6 +14,78 @@ function sanitizeFaceDescriptor(rawDescriptor) {
     .filter((v) => Number.isFinite(v));
 
   return numbers;
+}
+
+function normalizeRole(rawRole) {
+  if (typeof rawRole !== "string") {
+    return null;
+  }
+
+  const role = rawRole.trim().toLowerCase();
+  if (["student", "tutor", "admin"].includes(role)) {
+    return role;
+  }
+
+  return null;
+}
+
+function getUserRoles(user) {
+  const roles = Array.isArray(user.roles)
+    ? user.roles.map((r) => normalizeRole(r)).filter(Boolean)
+    : [];
+
+  if (roles.length > 0) {
+    return Array.from(new Set(roles));
+  }
+
+  const legacyRole = normalizeRole(user.role);
+  return legacyRole ? [legacyRole] : [];
+}
+
+function userHasRole(user, role) {
+  const normalizedRole = normalizeRole(role);
+  if (!normalizedRole) {
+    return false;
+  }
+
+  return getUserRoles(user).includes(normalizedRole);
+}
+
+function signToken(userId, role, tokenVersion) {
+  return jwt.sign(
+    { id: userId, role, tokenVersion: tokenVersion || 0 },
+    "secretkey",
+    { expiresIn: "1d" }
+  );
+}
+
+async function ensureProfileForRole(user, role, details) {
+  if (role === "student") {
+    const existingProfile = await StudentProfile.findOne({ user: user._id });
+    if (!existingProfile) {
+      await StudentProfile.create({
+        user: user._id,
+        name: user.name,
+        email: user.email,
+        university: details.university,
+        degreeProgram: details.degreeProgram,
+        year: details.year
+      });
+    }
+    return;
+  }
+
+  if (role === "tutor") {
+    const existingProfile = await TutorProfile.findOne({ user: user._id });
+    if (!existingProfile) {
+      await TutorProfile.create({
+        user: user._id,
+        firstName: details.firstName || "",
+        lastName: details.lastName || "",
+        personalEmail: user.email
+      });
+    }
+  }
 }
 
 function cosineSimilarity(a, b) {
@@ -42,27 +116,70 @@ exports.register = async (req, res) => {
   try {
     const { name, firstName, lastName, email, password, role, university, degreeProgram, year, faceDescriptor } = req.body;
     const fullName = (name || `${firstName || ""} ${lastName || ""}`.trim() || "User").trim();
+    const selectedRole = normalizeRole(role);
 
-    // check if user exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "Email already registered" });
+    if (!selectedRole || selectedRole === "admin") {
+      return res.status(400).json({ message: "Please choose a valid role (student or tutor)" });
     }
-
-    // hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
 
     const sanitizedDescriptor = sanitizeFaceDescriptor(faceDescriptor);
 
-    if (role === 'tutor' && sanitizedDescriptor.length === 0) {
-      return res.status(400).json({ message: 'Face ID is required for tutor registration' });
+    if (selectedRole === "tutor" && sanitizedDescriptor.length === 0) {
+      return res.status(400).json({ message: "Face ID is required for tutor registration" });
     }
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      const isMatch = await bcrypt.compare(password, existingUser.password);
+      if (!isMatch) {
+        return res.status(400).json({ message: "Email already registered with a different password" });
+      }
+
+      const roles = getUserRoles(existingUser);
+      if (!roles.includes(selectedRole)) {
+        roles.push(selectedRole);
+      }
+
+      existingUser.name = fullName;
+      existingUser.role = selectedRole;
+      existingUser.roles = roles;
+      existingUser.university = university;
+      existingUser.degreeProgram = degreeProgram;
+      existingUser.year = year;
+
+      if (sanitizedDescriptor.length > 0) {
+        existingUser.faceAuth = {
+          enabled: true,
+          descriptor: sanitizedDescriptor,
+          descriptorLength: sanitizedDescriptor.length,
+          updatedAt: new Date()
+        };
+      }
+
+      await existingUser.save();
+      await ensureProfileForRole(existingUser, selectedRole, { firstName, lastName, university, degreeProgram, year });
+
+      return res.status(200).json({
+        message: `Role ${selectedRole} added successfully`,
+        user: {
+          id: existingUser._id,
+          name: existingUser.name,
+          email: existingUser.email,
+          role: existingUser.role,
+          roles: getUserRoles(existingUser),
+          hasFaceId: Boolean(existingUser.faceAuth && existingUser.faceAuth.enabled)
+        }
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       name: fullName,
       email,
       password: hashedPassword,
-      role,
+      role: selectedRole,
+      roles: [selectedRole],
       faceAuth: {
         enabled: sanitizedDescriptor.length > 0,
         descriptor: sanitizedDescriptor,
@@ -74,26 +191,7 @@ exports.register = async (req, res) => {
       year
     });
 
-    // if the new user is a student, create a blank profile populated with these basics
-    if (role === 'student') {
-      const StudentProfile = require('../models/StudentProfile');
-      await StudentProfile.create({
-        user: user._id,
-        name: fullName,
-        email,
-        university,
-        degreeProgram,
-        year
-      });
-    } else if (role === 'tutor') {
-      const TutorProfile = require('../models/TutorProfile');
-      await TutorProfile.create({
-        user: user._id,
-        firstName: firstName || '',
-        lastName: lastName || '',
-        personalEmail: email
-      });
-    }
+    await ensureProfileForRole(user, selectedRole, { firstName, lastName, university, degreeProgram, year });
 
     res.status(201).json({
       message: "User registered successfully",
@@ -102,6 +200,7 @@ exports.register = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        roles: getUserRoles(user),
         hasFaceId: Boolean(user.faceAuth && user.faceAuth.enabled)
       }
     });
@@ -114,7 +213,8 @@ exports.register = async (req, res) => {
 // LOGIN
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
+    const selectedRole = normalizeRole(role) || null;
 
     const user = await User.findOne({ email });
     if (!user) {
@@ -126,16 +226,28 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
-    const token = jwt.sign(
-      { id: user._id, role: user.role, tokenVersion: user.tokenVersion || 0 },
-      "secretkey",
-      { expiresIn: "1d" }
-    );
+    const availableRoles = getUserRoles(user);
+    const activeRole = selectedRole || normalizeRole(user.role) || availableRoles[0];
+
+    if (!activeRole || !availableRoles.includes(activeRole)) {
+      return res.status(403).json({
+        message: "Selected role is not available for this account"
+      });
+    }
+
+    if (user.role !== activeRole || !Array.isArray(user.roles) || user.roles.length === 0) {
+      user.role = activeRole;
+      user.roles = availableRoles;
+      await user.save();
+    }
+
+    const token = signToken(user._id, activeRole, user.tokenVersion);
 
     res.json({
       message: "Login successful",
       token,
-      role: user.role
+      role: activeRole,
+      availableRoles
     });
 
   } catch (error) {
@@ -146,7 +258,8 @@ exports.login = async (req, res) => {
 // FACE LOGIN
 exports.faceLogin = async (req, res) => {
   try {
-    const { email, faceDescriptor } = req.body;
+    const { email, faceDescriptor, role } = req.body;
+    const selectedRole = normalizeRole(role) || null;
     const threshold = Number(process.env.FACE_LOGIN_THRESHOLD || 0.88);
 
     const incomingDescriptor = sanitizeFaceDescriptor(faceDescriptor);
@@ -161,6 +274,12 @@ exports.faceLogin = async (req, res) => {
       const user = await User.findOne({ email });
       if (!user) {
         return res.status(400).json({ message: "Invalid face credentials" });
+      }
+
+      if (selectedRole && !userHasRole(user, selectedRole)) {
+        return res.status(403).json({
+          message: `This account is not registered as ${selectedRole}.`
+        });
       }
 
       if (!user.faceAuth || !user.faceAuth.enabled || !Array.isArray(user.faceAuth.descriptor) || user.faceAuth.descriptor.length === 0) {
@@ -180,6 +299,10 @@ exports.faceLogin = async (req, res) => {
       }
 
       candidates.forEach((candidate) => {
+        if (selectedRole && !userHasRole(candidate, selectedRole)) {
+          return;
+        }
+
         const candidateScore = cosineSimilarity(incomingDescriptor, candidate.faceAuth.descriptor || []);
         if (candidateScore > score) {
           score = candidateScore;
@@ -199,16 +322,26 @@ exports.faceLogin = async (req, res) => {
       });
     }
 
-    const token = jwt.sign(
-      { id: matchedUser._id, role: matchedUser.role, tokenVersion: matchedUser.tokenVersion || 0 },
-      "secretkey",
-      { expiresIn: "1d" }
-    );
+    const availableRoles = getUserRoles(matchedUser);
+    const activeRole = selectedRole || normalizeRole(matchedUser.role) || availableRoles[0];
+
+    if (!activeRole || !availableRoles.includes(activeRole)) {
+      return res.status(403).json({ message: "Selected role is not available for this account" });
+    }
+
+    if (matchedUser.role !== activeRole || !Array.isArray(matchedUser.roles) || matchedUser.roles.length === 0) {
+      matchedUser.role = activeRole;
+      matchedUser.roles = availableRoles;
+      await matchedUser.save();
+    }
+
+    const token = signToken(matchedUser._id, activeRole, matchedUser.tokenVersion);
 
     res.json({
       message: "Face login successful",
       token,
-      role: matchedUser.role,
+      role: activeRole,
+      availableRoles,
       email: matchedUser.email,
       confidence: Number(score.toFixed(4))
     });
@@ -229,6 +362,39 @@ exports.logout = async (req, res) => {
     await user.save();
 
     res.json({ message: "Logged out successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.switchRole = async (req, res) => {
+  try {
+    const selectedRole = normalizeRole(req.body.role);
+    if (!selectedRole) {
+      return res.status(400).json({ message: "Please provide a valid role" });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const availableRoles = getUserRoles(user);
+    if (!availableRoles.includes(selectedRole)) {
+      return res.status(403).json({ message: `Role ${selectedRole} is not available for this account` });
+    }
+
+    user.role = selectedRole;
+    user.roles = availableRoles;
+    await user.save();
+
+    const token = signToken(user._id, selectedRole, user.tokenVersion);
+    res.json({
+      message: "Active role switched",
+      token,
+      role: selectedRole,
+      availableRoles
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

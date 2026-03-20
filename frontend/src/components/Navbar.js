@@ -7,6 +7,8 @@ export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem('token'));
+  const [availableRoles, setAvailableRoles] = useState([]);
+  const [switchingRole, setSwitchingRole] = useState(false);
 
   const getRoleFromToken = () => {
     try {
@@ -26,11 +28,29 @@ export default function Navbar() {
     return '/student';
   };
 
+  const getStoredRoles = () => {
+    try {
+      const raw = localStorage.getItem('availableRoles');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const syncAuthState = () => {
+    const hasToken = !!localStorage.getItem('token');
+    setLoggedIn(hasToken);
+    setAvailableRoles(hasToken ? getStoredRoles() : []);
+  };
+
   // sync login state when storage changes (e.g. from another tab)
   useEffect(() => {
-    const handler = () => setLoggedIn(!!localStorage.getItem('token'));
+    const handler = () => syncAuthState();
     window.addEventListener('storage', handler);
     window.addEventListener('auth-changed', handler);
+    syncAuthState();
     return () => {
       window.removeEventListener('storage', handler);
       window.removeEventListener('auth-changed', handler);
@@ -39,8 +59,34 @@ export default function Navbar() {
 
   // same-tab route changes should also refresh auth button state
   useEffect(() => {
-    setLoggedIn(!!localStorage.getItem('token'));
+    syncAuthState();
   }, [location.pathname]);
+
+  const handleSwitchRole = async () => {
+    const currentRole = getRoleFromToken();
+    const targetRole = availableRoles.find((role) => role !== currentRole);
+
+    if (!targetRole) {
+      return;
+    }
+
+    setSwitchingRole(true);
+    try {
+      const res = await api.post('/auth/switch-role', { role: targetRole });
+      const { token, role, availableRoles: rolesFromServer } = res.data;
+      localStorage.setItem('token', token);
+      localStorage.setItem('availableRoles', JSON.stringify(Array.isArray(rolesFromServer) ? rolesFromServer : [role]));
+      window.dispatchEvent(new Event('auth-changed'));
+
+      if (role === 'admin') navigate('/admin');
+      else if (role === 'tutor') navigate('/tutor');
+      else navigate('/student');
+    } catch (e) {
+      // Keep the current session if role switch fails.
+    } finally {
+      setSwitchingRole(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -49,6 +95,7 @@ export default function Navbar() {
       // proceed with local logout even if API fails
     } finally {
       localStorage.removeItem('token');
+      localStorage.removeItem('availableRoles');
       window.dispatchEvent(new Event('auth-changed'));
       setLoggedIn(false);
       navigate('/login');
@@ -72,6 +119,11 @@ export default function Navbar() {
       <div className="nav-actions">
         {loggedIn ? (
           <>
+            {availableRoles.length > 1 && (
+              <button className="nav-login" onClick={handleSwitchRole} disabled={switchingRole}>
+                {switchingRole ? 'Switching...' : `Switch to ${getRoleFromToken() === 'tutor' ? 'Student' : 'Tutor'}`}
+              </button>
+            )}
             <button className="nav-profile" onClick={() => navigate(getProfileRoute())} title="Open profile">
               <span role="img" aria-label="profile">👤</span>
             </button>
