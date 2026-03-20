@@ -113,8 +113,8 @@ export default function Navbar() {
         <li><Link to="#wellness">Wellness</Link></li>
         <li><Link to="#book">Book a Tutor</Link></li>
         <li><Link to="#references">References</Link></li>
-        <li><Link to="#group">Need a Group</Link></li>
-        <li><Link to="#room">Study Room</Link></li>
+        <li><Link to="/student?section=matching">Need a Group</Link></li>
+        <li><Link to="/study-room">Study Room</Link></li>
       </ul>
       <div className="nav-actions">
         {loggedIn ? (

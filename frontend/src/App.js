@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import StudentDashboard from './pages/StudentDashboard';
 import TutorDashboard from './pages/TutorDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import StudyRoom from './pages/StudyRoom';
 import Navbar from './components/Navbar';
 import { useEffect } from 'react';
 
@@ -67,7 +68,7 @@ function AppWrapper() {
 
   return (
     <> 
-      {!['/', '/login', '/register', '/tutor'].includes(location.pathname) && <Navbar />}
+      {!['/', '/login', '/register', '/tutor', '/study-room'].includes(location.pathname) && <Navbar />}
       <Routes>
         <Route path="/" element={<HomePage/>} />
         <Route path="/login" element={<Login/>} />
@@ -76,6 +77,7 @@ function AppWrapper() {
         <Route path="/student" element={<Private><StudentDashboard/></Private>} />
         <Route path="/tutor" element={<Private><TutorDashboard/></Private>} />
         <Route path="/admin" element={<Private><AdminDashboard/></Private>} />
+        <Route path="/study-room" element={<Private><StudyRoom/></Private>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

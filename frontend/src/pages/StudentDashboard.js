@@ -2,7 +2,7 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 
 const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
@@ -10,6 +10,7 @@ const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-
 
 export default function StudentDashboard(){
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [profile, setProfile] = useState({
     university:'', degreeProgram:'', year:'', personalityType:'',
     subjects:[], weakSubjects:[], strongSubjects:[], skills:[],
@@ -44,6 +45,8 @@ export default function StudentDashboard(){
   // Load profile on mount
   useEffect(() => {
     loadProfile();
+    const sectionParam = searchParams.get('section');
+    if (sectionParam) setCurrentSection(sectionParam);
   }, []);
 
   // when profile first arrives (has an _id) fetch only group request list
@@ -870,6 +873,10 @@ export default function StudentDashboard(){
                 const mine = String(req.requestedBy?._id || req.requestedBy) === String(profile.user?._id || profile.user);
                 const myInvite = (req.invitees || []).find((i) => String(i.user?._id || i.user) === String(profile.user?._id || profile.user));
                 const pendingForMe = !mine && req.status === 'pending' && myInvite?.status === 'pending';
+                const iAccepted = myInvite?.status === 'accepted';
+                const allAccepted = (req.invitees || []).every((i) => i.status === 'accepted');
+                const acceptedCount = (req.invitees || []).filter((i) => i.status === 'accepted').length;
+                const totalInvitees = (req.invitees || []).length;
                 return (
                   <div key={req._id} style={{padding:'0.8rem',background:'rgba(255,255,255,.05)',borderRadius:'10px',border:'1px solid rgba(255,255,255,.1)'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'0.5rem',marginBottom:'0.35rem'}}>
@@ -878,38 +885,88 @@ export default function StudentDashboard(){
                       </div>
                       <span style={{fontSize:'0.72rem',padding:'0.2rem 0.55rem',borderRadius:'99px',background:req.status==='grouped'?'rgba(0,229,195,.18)':'rgba(255,184,0,.15)',color:req.status==='grouped'?'#00E5C3':'#ffd369'}}>{req.status}</span>
                     </div>
-                    <div style={{fontSize:'0.8rem',color:'rgba(255,255,255,.65)',marginBottom:'0.5rem'}}>
-                      Members invited: {(req.invitees || []).map((i) => i.user?.name || 'User').join(', ')}
-                    </div>
-                    <div style={{display:'flex',gap:'0.5rem',flexWrap:'wrap'}}>
-                      {(req.invitees || []).map((invitee) => (
-                        <button
-                          type="button"
-                          key={invitee.user?._id || invitee.user}
-                          onClick={() => setDetailsPopup({ show: true, invitee, request: req })}
-                          style={{padding:'0.35rem 0.65rem',borderRadius:'8px',border:'1px solid rgba(255,255,255,.15)',background:'rgba(255,255,255,.04)',color:'#fff',cursor:'pointer',fontSize:'0.74rem'}}
-                        >
-                          Details: {invitee.user?.name || 'Member'}
-                        </button>
-                      ))}
+
+                    {/* Acceptance progress */}
+                    {req.status === 'pending' && (
+                      <div style={{fontSize:'0.78rem',color:'rgba(255,255,255,.5)',marginBottom:'0.5rem'}}>
+                        ✅ {acceptedCount}/{totalInvitees} members accepted — all must accept to form group
+                      </div>
+                    )}
+
+                    {/* Members with their acceptance status */}
+                    <div style={{fontSize:'0.78rem',color:'rgba(255,255,255,.45)',marginBottom:'0.15rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.04em'}}>Members</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:'0.3rem',marginBottom:'0.5rem'}}>
+                      {/* Requester (always accepted) */}
+                      <div style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.35rem 0.6rem',borderRadius:'8px',background:'rgba(255,255,255,.03)'}}>
+                        <span style={{fontSize:'0.82rem',flex:1}}>{mine ? 'You (requester)' : (req.requestedBy?.name || 'Requester')}</span>
+                        <span style={{fontSize:'0.68rem',padding:'0.15rem 0.45rem',borderRadius:'99px',background:'rgba(0,229,195,.15)',color:'#00E5C3'}}>✓ creator</span>
+                      </div>
+                      {/* Invitees with status */}
+                      {(req.invitees || []).map((invitee) => {
+                        const isMe = String(invitee.user?._id || invitee.user) === String(profile.user?._id || profile.user);
+                        return (
+                          <div key={invitee.user?._id || invitee.user} style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.35rem 0.6rem',borderRadius:'8px',background:'rgba(255,255,255,.03)'}}>
+                            <span style={{fontSize:'0.82rem',flex:1}}>{isMe ? 'You' : (invitee.user?.name || 'Member')}</span>
+                            <span style={{fontSize:'0.68rem',padding:'0.15rem 0.45rem',borderRadius:'99px',background:invitee.status==='accepted'?'rgba(0,229,195,.15)':'rgba(255,184,0,.12)',color:invitee.status==='accepted'?'#00E5C3':'#ffd369'}}>
+                              {invitee.status === 'accepted' ? '✓ accepted' : '⏳ pending'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setDetailsPopup({ show: true, invitee, request: req })}
+                              style={{padding:'0.2rem 0.5rem',borderRadius:'6px',border:'1px solid rgba(255,255,255,.12)',background:'rgba(255,255,255,.04)',color:'rgba(255,255,255,.6)',cursor:'pointer',fontSize:'0.68rem'}}
+                            >
+                              Details
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
 
-                    {mine && req.status === 'pending' && (
+                    {/* Accept / Reject for my pending invite */}
+                    {pendingForMe && (
+                      <div style={{display:'flex',gap:'0.6rem',marginTop:'0.5rem',padding:'0.6rem',background:'rgba(26,107,255,.06)',borderRadius:'10px',border:'1px solid rgba(26,107,255,.15)'}}>
+                        <div style={{flex:1,fontSize:'0.82rem',color:'rgba(255,255,255,.7)',display:'flex',alignItems:'center'}}>You have been invited to this group</div>
+                        <button type="button" onClick={() => respondToRequest(req._id, 'accept')} style={{padding:'0.5rem 1rem',borderRadius:'8px',background:'#00E5C3',border:'none',color:'#03121f',cursor:'pointer',fontWeight:700,fontSize:'0.82rem'}}>✓ Accept</button>
+                        <button type="button" onClick={() => respondToRequest(req._id, 'reject')} style={{padding:'0.5rem 1rem',borderRadius:'8px',background:'rgba(255,82,114,.15)',border:'1px solid rgba(255,82,114,.35)',color:'#ff8aa2',cursor:'pointer',fontWeight:600,fontSize:'0.82rem'}}>✕ Reject</button>
+                      </div>
+                    )}
+
+                    {/* Show "you accepted" badge for accepted invitees when still pending overall */}
+                    {!mine && iAccepted && req.status === 'pending' && (
+                      <div style={{marginTop:'0.5rem',fontSize:'0.82rem',color:'#00E5C3'}}>
+                        ✓ You accepted — waiting for others to accept
+                      </div>
+                    )}
+
+                    {/* Delete button — any member can delete */}
+                    {req.status === 'pending' && (
                       <div style={{display:'flex',gap:'0.6rem',marginTop:'0.7rem'}}>
                         <button
                           type="button"
                           onClick={() => deleteGroupRequest(req._id)}
                           style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'rgba(255,82,114,.15)',border:'1px solid rgba(255,82,114,.35)',color:'#ff8aa2',cursor:'pointer',fontWeight:600}}
                         >
-                          Delete Request
+                          🗑 Delete Request
                         </button>
                       </div>
                     )}
 
-                    {pendingForMe && (
+                    {req.status === 'grouped' && (
                       <div style={{display:'flex',gap:'0.6rem',marginTop:'0.7rem'}}>
-                        <button type="button" onClick={() => respondToRequest(req._id, 'accept')} style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'#00E5C3',border:'none',color:'#03121f',cursor:'pointer',fontWeight:700}}>Accept</button>
-                        <button type="button" onClick={() => respondToRequest(req._id, 'reject')} style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'rgba(255,82,114,.15)',border:'1px solid rgba(255,82,114,.35)',color:'#ff8aa2',cursor:'pointer',fontWeight:600}}>Ignore</button>
+                        <button
+                          type="button"
+                          onClick={() => navigate('/study-room')}
+                          style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'linear-gradient(135deg,#1A6BFF,#00E5C3)',border:'none',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:'0.82rem'}}
+                        >
+                          📚 Open Study Room
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteGroupRequest(req._id)}
+                          style={{padding:'0.45rem 0.85rem',borderRadius:'8px',background:'rgba(255,82,114,.15)',border:'1px solid rgba(255,82,114,.35)',color:'#ff8aa2',cursor:'pointer',fontWeight:600}}
+                        >
+                          🗑 Leave & Delete Group
+                        </button>
                       </div>
                     )}
                   </div>

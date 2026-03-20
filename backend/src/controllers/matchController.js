@@ -1,5 +1,7 @@
 const StudentProfile = require("../models/StudentProfile");
 const GroupRequest = require("../models/GroupRequest");
+const StudyGroup = require("../models/StudyGroup");
+const User = require("../models/User");
 const { computeScore } = require("../services/matchingService");
 
 function getMatchReasons(a, b) {
@@ -154,6 +156,8 @@ const respondToGroupRequest = async (req, res) => {
     }
 
     if (action === "reject") {
+      // Any rejection deletes the entire request + associated study group
+      await StudyGroup.findOneAndDelete({ groupRequest: requestDoc._id });
       await GroupRequest.findByIdAndDelete(requestId);
       return res.json({ message: "Request rejected and removed" });
     }
@@ -163,11 +167,29 @@ const respondToGroupRequest = async (req, res) => {
     const allAccepted = requestDoc.invitees.every((i) => i.status === "accepted");
     if (allAccepted) {
       requestDoc.status = "grouped";
+
+      // Auto-create a StudyGroup for the newly-formed group
+      const existing = await StudyGroup.findOne({ groupRequest: requestDoc._id });
+      if (!existing) {
+        const requester = await User.findById(requestDoc.requestedBy).select("name");
+        const groupName = `${requester?.name || "Study"}'s Study Group`;
+
+        const members = [
+          { user: requestDoc.requestedBy, role: "admin" },
+          ...requestDoc.invitees.map((i) => ({ user: i.user, role: "member" })),
+        ];
+
+        await StudyGroup.create({
+          name: groupName,
+          groupRequest: requestDoc._id,
+          members,
+        });
+      }
     }
 
     await requestDoc.save();
     return res.json({
-      message: allAccepted ? "Group is now formed" : "Request accepted",
+      message: allAccepted ? "Group is now formed – Study Room created!" : "Request accepted",
       request: requestDoc,
     });
   } catch (err) {
@@ -184,12 +206,18 @@ const deleteGroupRequest = async (req, res) => {
       return res.status(404).json({ message: "Request not found" });
     }
 
-    if (String(requestDoc.requestedBy) !== String(req.user.id)) {
-      return res.status(403).json({ message: "Only the main requester can delete this request" });
+    // Any member of the request can delete it
+    const isMember = requestDoc.memberUserIds.some(
+      (uid) => String(uid) === String(req.user.id)
+    );
+    if (!isMember) {
+      return res.status(403).json({ message: "Only group members can delete this request" });
     }
 
+    // Also remove any associated study group
+    await StudyGroup.findOneAndDelete({ groupRequest: requestDoc._id });
     await GroupRequest.findByIdAndDelete(requestId);
-    return res.json({ message: "Request deleted" });
+    return res.json({ message: "Request and group deleted" });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
