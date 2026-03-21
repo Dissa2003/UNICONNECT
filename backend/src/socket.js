@@ -2,6 +2,8 @@ const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const StudyGroup = require("./models/StudyGroup");
 const Message = require("./models/Message");
+const { getBotReply } = require("./services/botService");
+const { queryPdf } = require("./services/pdfService");
 
 function initSocket(httpServer) {
   const io = new Server(httpServer, {
@@ -65,6 +67,28 @@ function initSocket(httpServer) {
 
         // broadcast to the whole room (including sender)
         io.to(groupId).emit("new-message", populated);
+
+        // ── @bot trigger ──
+        if (content.trim().toLowerCase().startsWith("@bot")) {
+          const prompt = content.trim().substring(4).trim();
+          if (prompt) {
+            io.to(groupId).emit("bot-typing", { groupId });
+            const reply = await getBotReply(prompt);
+            if (reply) {
+              const botMsg = await Message.create({
+                group: groupId,
+                sender: null,
+                isBot: true,
+                type: "text",
+                content: reply,
+              });
+              const botPopulated = botMsg.toObject();
+              botPopulated.sender = { _id: "bot", name: "@bot", email: "bot@uniconnect" };
+              io.to(groupId).emit("new-message", botPopulated);
+            }
+            io.to(groupId).emit("bot-stop-typing", { groupId });
+          }
+        }
       } catch (err) {
         console.error("send-message error:", err.message);
       }
@@ -82,6 +106,21 @@ function initSocket(httpServer) {
       socket.to(groupId).emit("user-stop-typing", {
         userId: socket.userId,
       });
+    });
+
+    // ── Reference Flow – private PDF Q&A ──
+    socket.on("ref-query", async ({ question }) => {
+      try {
+        if (!question || !question.trim()) return;
+        socket.emit("ref-typing");
+        const answer = await queryPdf(socket.userId, question.trim());
+        socket.emit("ref-reply", { answer });
+      } catch (err) {
+        console.error("ref-query error:", err.message);
+        socket.emit("ref-reply", {
+          answer: "Something went wrong. Please try again.",
+        });
+      }
     });
 
     socket.on("disconnect", () => {

@@ -10,7 +10,11 @@ const MessageSchema = new mongoose.Schema(
     sender: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      default: null,
+    },
+    isBot: {
+      type: Boolean,
+      default: false,
     },
     type: {
       type: String,
