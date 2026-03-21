@@ -2,6 +2,8 @@ const StudyGroup = require("../models/StudyGroup");
 const Message = require("../models/Message");
 const GroupRequest = require("../models/GroupRequest");
 const path = require("path");
+const { getBotReply } = require("../services/botService");
+const { ingestPdf, getUserPdfInfo, clearUserPdf } = require("../services/pdfService");
 
 // ── Helper: check if user is member of a study group ──
 async function assertMembership(groupId, userId) {
@@ -45,8 +47,15 @@ const getMessages = async (req, res) => {
       .limit(limit)
       .populate("sender", "name email");
 
-    // return in chronological order
-    return res.json(messages.reverse());
+    // return in chronological order, inject bot sender for bot messages
+    const result = messages.reverse().map((m) => {
+      const obj = m.toObject();
+      if (obj.isBot && !obj.sender) {
+        obj.sender = { _id: "bot", name: "@bot", email: "bot@uniconnect" };
+      }
+      return obj;
+    });
+    return res.json(result);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -78,6 +87,26 @@ const sendMessage = async (req, res) => {
     const io = req.app.get("io");
     if (io) {
       io.to(groupId).emit("new-message", populated);
+    }
+
+    // ── @bot trigger (REST fallback) ──
+    if (content.trim().toLowerCase().startsWith("@bot")) {
+      const prompt = content.trim().substring(4).trim();
+      if (prompt) {
+        const reply = await getBotReply(prompt);
+        if (reply) {
+          const botMsg = await Message.create({
+            group: groupId,
+            sender: null,
+            isBot: true,
+            type: "text",
+            content: reply,
+          });
+          const botPopulated = botMsg.toObject();
+          botPopulated.sender = { _id: "bot", name: "@bot", email: "bot@uniconnect" };
+          if (io) io.to(groupId).emit("new-message", botPopulated);
+        }
+      }
     }
 
     return res.status(201).json(populated);
@@ -142,10 +171,57 @@ const getGroupMembers = async (req, res) => {
   }
 };
 
+// POST /api/studyroom/ref-upload  – upload PDF for Reference Flow
+const refUploadPdf = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    if (req.file.mimetype !== "application/pdf") {
+      return res.status(400).json({ message: "Only PDF files are allowed" });
+    }
+
+    const result = await ingestPdf(
+      req.user.id,
+      req.file.path,
+      req.file.originalname
+    );
+
+    return res.json({
+      message: "PDF processed successfully",
+      fileName: result.fileName,
+      totalChunks: result.totalChunks,
+      pages: result.pages,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/studyroom/ref-info  – check if user has a PDF loaded
+const refGetInfo = async (req, res) => {
+  const info = getUserPdfInfo(req.user.id);
+  if (!info) return res.json({ loaded: false });
+  return res.json({
+    loaded: true,
+    fileName: info.fileName,
+    totalChunks: info.chunks.length,
+  });
+};
+
+// DELETE /api/studyroom/ref-clear  – clear user's PDF
+const refClear = async (req, res) => {
+  clearUserPdf(req.user.id);
+  return res.json({ message: "PDF cleared" });
+};
+
 module.exports = {
   getMyGroups,
   getMessages,
   sendMessage,
   uploadFile,
   getGroupMembers,
+  refUploadPdf,
+  refGetInfo,
+  refClear,
 };

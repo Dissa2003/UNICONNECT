@@ -10,6 +10,9 @@ const {
   sendMessage,
   uploadFile,
   getGroupMembers,
+  refUploadPdf,
+  refGetInfo,
+  refClear,
 } = require("../controllers/studyRoomController");
 
 // ── Multer config ──
@@ -49,6 +52,9 @@ const upload = multer({
 });
 
 router.get("/my-groups", protect, getMyGroups);
+router.get("/ref-info", protect, refGetInfo);
+router.post("/ref-upload", protect, upload.single("file"), refUploadPdf);
+router.delete("/ref-clear", protect, refClear);
 router.get("/:groupId/messages", protect, getMessages);
 router.post("/:groupId/messages", protect, sendMessage);
 router.post("/:groupId/upload", protect, upload.single("file"), uploadFile);

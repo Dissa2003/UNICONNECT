@@ -437,9 +437,9 @@ export default function StudentDashboard(){
       <div className="orb o2" style={{position:'fixed',width:'400px',height:'400px',background:'radial-gradient(circle,rgba(0,229,195,.1),transparent 70%)',bottom:0,left:'-80px',filter:'blur(120px)',pointerEvents:'none',zIndex:0,borderRadius:'50%',animation:'d2 18s ease-in-out infinite alternate'}}></div>
 
 
-      <div style={{position:'relative',zIndex:1,display:'grid',gridTemplateColumns:'280px 1fr',gap:0,height:'100vh',paddingTop:'68px'}}>
+      <div style={{position:'relative',zIndex:1,display:'grid',gridTemplateColumns:'280px 1fr',gap:0,height:'calc(100vh - 72px)'}}>
         {/* SIDEBAR */}
-        <aside style={{position:'sticky',top:'68px',height:'calc(100vh - 68px)',overflowY:'auto',padding:'2rem 1.5rem',background:'rgba(13,23,48,.6)',borderRight:'1px solid rgba(255,255,255,.09)',backdropFilter:'blur(20px)',display:'flex',flexDirection:'column',gap:'0.3rem'}}>
+        <aside style={{position:'sticky',top:0,height:'100%',overflowY:'auto',padding:'2rem 1.5rem',background:'rgba(13,23,48,.6)',borderRight:'1px solid rgba(255,255,255,.09)',backdropFilter:'blur(20px)',display:'flex',flexDirection:'column',gap:'0.3rem'}}>
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.7rem',padding:'1.5rem 1rem',background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.09)',borderRadius:'16px',marginBottom:'1.2rem',textAlign:'center'}}>
             <div style={{position:'relative',width:'80px',height:'80px',borderRadius:'50%',background:'linear-gradient(135deg,#1A6BFF,#00E5C3)',display:'grid',placeItems:'center',fontSize:'2rem',cursor:'pointer'}} onClick={() => {
               const emojis = ['🎓','👨‍💻','👩‍💻','🧑‍🔬','📚','🚀','⭐','🔬'];

@@ -1,9 +1,9 @@
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
-const path = require("path");
 const connectDB = require("./config/db");
 const { initSocket } = require("./socket");
 
