@@ -17,8 +17,19 @@ export default function StudyRoom() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [typingUsers, setTypingUsers] = useState([]);
+  const [botTyping, setBotTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [membersOpen, setMembersOpen] = useState(false);
+
+  // Reference Flow state
+  const [refOpen, setRefOpen] = useState(false);
+  const [refMessages, setRefMessages] = useState([]);
+  const [refInput, setRefInput] = useState('');
+  const [refLoading, setRefLoading] = useState(false);
+  const [refPdf, setRefPdf] = useState(null); // { fileName, totalChunks, pages }
+  const [refUploading, setRefUploading] = useState(false);
+  const refFileInputRef = useRef(null);
+  const refEndRef = useRef(null);
 
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -66,6 +77,16 @@ export default function StudyRoom() {
       setTypingUsers((prev) => prev.filter((u) => u !== userId));
     });
 
+    socket.on('bot-typing', () => setBotTyping(true));
+    socket.on('bot-stop-typing', () => setBotTyping(false));
+
+    // Reference Flow private replies
+    socket.on('ref-reply', ({ answer }) => {
+      setRefLoading(false);
+      setRefMessages((prev) => [...prev, { role: 'bot', content: answer }]);
+    });
+    socket.on('ref-typing', () => setRefLoading(true));
+
     socketRef.current = socket;
 
     return () => {
@@ -84,14 +105,26 @@ export default function StudyRoom() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Scroll ref chat
+  useEffect(() => {
+    refEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [refMessages, refLoading]);
+
+  // Check if user has a Reference Flow PDF loaded
+  useEffect(() => {
+    api.get('/studyroom/ref-info')
+      .then((res) => { if (res.data?.loaded) setRefPdf(res.data); })
+      .catch(() => {});
+  }, []);
+
   // Custom cursor movement
   useEffect(() => {
     const cO = document.getElementById('cO');
     const cI = document.getElementById('cI');
     if (!cO || !cI) return;
     const move = (e) => {
-      cI.style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
-      cO.style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
+      cI.style.transform = `translate(${e.clientX - 4}px,${e.clientY - 4}px)`;
+      cO.style.transform = `translate(${e.clientX - 17}px,${e.clientY - 17}px)`;
     };
     document.addEventListener('mousemove', move);
 
@@ -236,6 +269,51 @@ export default function StudyRoom() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  // ── Reference Flow helpers ──
+  const handleRefUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setRefUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post('/studyroom/ref-upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setRefPdf(res.data);
+      setRefMessages([{ role: 'bot', content: `📄 "${res.data.fileName}" loaded (${res.data.pages} pages, ${res.data.totalChunks} chunks). Ask me anything about it!` }]);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Upload failed. Only PDF files allowed.');
+    } finally {
+      setRefUploading(false);
+      if (refFileInputRef.current) refFileInputRef.current.value = '';
+    }
+  };
+
+  const handleRefClear = async () => {
+    try {
+      await api.delete('/studyroom/ref-clear');
+      setRefPdf(null);
+      setRefMessages([]);
+    } catch {}
+  };
+
+  const sendRefQuery = () => {
+    if (!refInput.trim() || !socketRef.current) return;
+    const question = refInput.trim();
+    setRefMessages((prev) => [...prev, { role: 'user', content: question }]);
+    setRefInput('');
+    setRefLoading(true);
+    socketRef.current.emit('ref-query', { question });
+  };
+
+  const handleRefKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendRefQuery();
+    }
+  };
+
   // Group messages by date for date separators
   const renderMessages = () => {
     let lastDate = '';
@@ -244,6 +322,7 @@ export default function StudyRoom() {
       const showDate = dateStr !== lastDate;
       lastDate = dateStr;
       const isMe = String(msg.sender?._id || msg.sender) === currentUserId.current;
+      const isBot = msg.isBot || String(msg.sender?._id) === 'bot';
 
       return (
         <React.Fragment key={msg._id}>
@@ -253,14 +332,17 @@ export default function StudyRoom() {
             </div>
           )}
           <div style={{ ...styles.messageBubbleRow, justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
+            {isBot && <div style={styles.botAvatar}>🤖</div>}
             <div style={{
               ...styles.messageBubble,
-              background: isMe ? 'rgba(26,107,255,.18)' : 'rgba(255,255,255,.06)',
-              borderColor: isMe ? 'rgba(26,107,255,.3)' : 'rgba(255,255,255,.1)',
+              background: isBot ? 'rgba(138,80,255,.12)' : isMe ? 'rgba(26,107,255,.18)' : 'rgba(255,255,255,.06)',
+              borderColor: isBot ? 'rgba(138,80,255,.3)' : isMe ? 'rgba(26,107,255,.3)' : 'rgba(255,255,255,.1)',
             }}>
-              {!isMe && (
+              {isBot ? (
+                <div style={styles.botSenderName}>@bot</div>
+              ) : !isMe ? (
                 <div style={styles.senderName}>{msg.sender?.name || 'User'}</div>
-              )}
+              ) : null}
               {msg.type === 'file' ? (
                 <a
                   href={`${SOCKET_URL}${msg.fileUrl}`}
@@ -297,8 +379,29 @@ export default function StudyRoom() {
       <div style={{ ...styles.sidebar, transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)' }}>
         <div style={styles.sidebarHeader}>
           <h2 style={styles.sidebarTitle}>📚 Study Rooms</h2>
-          <button type="button" onClick={() => navigate('/student')} style={styles.backBtn}>← Dashboard</button>
         </div>
+
+        {/* Reference Flow – private PDF chatbot */}
+        <button
+          type="button"
+          onClick={() => setRefOpen(!refOpen)}
+          style={{
+            ...styles.refFlowBtn,
+            background: refOpen ? 'rgba(138,80,255,.15)' : 'rgba(138,80,255,.06)',
+            borderColor: refOpen ? 'rgba(138,80,255,.4)' : 'rgba(138,80,255,.15)',
+          }}
+        >
+          <span style={{ fontSize: '1.2rem' }}>🔮</span>
+          <div style={{ flex: 1, textAlign: 'left' }}>
+            <div style={styles.refFlowTitle}>Reference Flow</div>
+            <div style={styles.refFlowSub}>
+              {refPdf ? `📄 ${refPdf.fileName}` : 'AI Chat & PDF Assistant'}
+            </div>
+          </div>
+          <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,.3)' }}>
+            {refOpen ? '▲' : '▼'}
+          </span>
+        </button>
 
         {loading ? (
           <div style={styles.emptyState}>Loading...</div>
@@ -336,7 +439,110 @@ export default function StudyRoom() {
 
       {/* Main chat area */}
       <div style={styles.chatArea}>
-        {!activeGroup ? (
+        {refOpen ? (
+          /* ── Reference Flow Panel ── */
+          <div style={styles.refPanel}>
+            <div style={styles.refHeader}>
+              <span style={{ fontSize: '1.3rem' }}>🔮</span>
+              <div>
+                <div style={styles.refHeaderTitle}>Reference Flow</div>
+                <div style={styles.refHeaderSub}>
+                  {refPdf ? `📄 ${refPdf.fileName}` : 'Chat or upload a PDF to get started'}
+                </div>
+              </div>
+              <button type="button" onClick={() => setRefOpen(false)} style={styles.refCloseBtn}>✕</button>
+            </div>
+
+            {/* Upload area */}
+            <div style={styles.refUploadArea}>
+              <input
+                ref={refFileInputRef}
+                type="file"
+                accept=".pdf"
+                style={{ display: 'none' }}
+                onChange={handleRefUpload}
+              />
+              {!refPdf ? (
+                <button
+                  type="button"
+                  onClick={() => refFileInputRef.current?.click()}
+                  disabled={refUploading}
+                  style={styles.refUploadBtn}
+                >
+                  {refUploading ? '⏳ Processing...' : '📄 Upload PDF'}
+                </button>
+              ) : (
+                <div style={styles.refPdfInfo}>
+                  <span>📄 {refPdf.fileName}</span>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <button type="button" onClick={() => refFileInputRef.current?.click()} disabled={refUploading} style={styles.refSmallBtn}>
+                      {refUploading ? '⏳' : '🔄 Replace'}
+                    </button>
+                    <button type="button" onClick={handleRefClear} style={styles.refSmallBtn}>
+                      🗑️ Clear
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Chat messages */}
+            <div style={styles.refMessagesArea}>
+              {refMessages.length === 0 && (
+                <div style={styles.refEmptyState}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.8rem' }}>🔮</div>
+                  <div style={{ fontFamily: 'Syne', fontWeight: 700, marginBottom: '0.4rem' }}>Reference Flow</div>
+                  <div>{refPdf ? 'PDF loaded! Ask me anything about it.' : 'Chat with AI or upload a PDF to ask questions about it.'}</div>
+                </div>
+              )}
+              {refMessages.map((msg, i) => (
+                <div key={i} style={{
+                  ...styles.refMsgRow,
+                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                }}>
+                  {msg.role === 'bot' && <div style={styles.refBotAvatar}>🔮</div>}
+                  <div style={{
+                    ...styles.refMsgBubble,
+                    background: msg.role === 'user' ? 'rgba(26,107,255,.18)' : 'rgba(138,80,255,.12)',
+                    borderColor: msg.role === 'user' ? 'rgba(26,107,255,.3)' : 'rgba(138,80,255,.3)',
+                  }}>
+                    <div style={styles.refMsgText}>{msg.content}</div>
+                  </div>
+                </div>
+              ))}
+              {refLoading && (
+                <div style={styles.refMsgRow}>
+                  <div style={styles.refBotAvatar}>🔮</div>
+                  <div style={{ ...styles.refMsgBubble, background: 'rgba(138,80,255,.08)', borderColor: 'rgba(138,80,255,.2)' }}>
+                    <div style={styles.refTyping}>Thinking...</div>
+                  </div>
+                </div>
+              )}
+              <div ref={refEndRef} />
+            </div>
+
+            {/* Input */}
+            <div style={styles.refInputBar}>
+              <input
+                type="text"
+                placeholder={refPdf ? 'Ask about your PDF...' : 'Ask anything...'}
+                value={refInput}
+                onChange={(e) => setRefInput(e.target.value)}
+                onKeyDown={handleRefKeyDown}
+                disabled={refLoading}
+                style={styles.refTextInput}
+              />
+              <button
+                type="button"
+                onClick={sendRefQuery}
+                disabled={!refInput.trim() || refLoading}
+                style={styles.refSendBtn}
+              >
+                ➤
+              </button>
+            </div>
+          </div>
+        ) : !activeGroup ? (
           <div style={styles.noChatSelected}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💬</div>
             <h3 style={{ fontFamily: 'Syne', fontWeight: 700, marginBottom: '0.5rem' }}>Welcome to Study Room</h3>
@@ -397,6 +603,11 @@ export default function StudyRoom() {
                   {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
                 </div>
               )}
+              {botTyping && (
+                <div style={styles.botTypingIndicator}>
+                  🤖 @bot is thinking...
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
@@ -442,7 +653,8 @@ export default function StudyRoom() {
 const styles = {
   container: {
     display: 'flex',
-    height: '100vh',
+    height: 'calc(100vh - 72px)',
+    marginTop: 0,
     background: '#03121f',
     color: '#fff',
     fontFamily: "'DM Sans', sans-serif",
@@ -450,9 +662,9 @@ const styles = {
     cursor: 'none',
   },
   // Cursor
-  cursorOuter: { position: 'fixed', top: -17, left: -17, pointerEvents: 'none', zIndex: 9999 },
+  cursorOuter: { position: 'fixed', top: 0, left: 0, pointerEvents: 'none', zIndex: 9999 },
   curRing: { width: 34, height: 34, borderRadius: '50%', border: '1.5px solid rgba(26,107,255,.55)', transition: 'all .25s' },
-  cursorInner: { position: 'fixed', top: -4, left: -4, pointerEvents: 'none', zIndex: 9999 },
+  cursorInner: { position: 'fixed', top: 0, left: 0, pointerEvents: 'none', zIndex: 9999 },
   curDot: { width: 8, height: 8, borderRadius: '50%', background: '#1A6BFF' },
 
   // Sidebar
@@ -477,15 +689,7 @@ const styles = {
     letterSpacing: '-0.02em',
     margin: '0 0 0.6rem 0',
   },
-  backBtn: {
-    background: 'rgba(255,255,255,.05)',
-    border: '1px solid rgba(255,255,255,.1)',
-    color: 'rgba(255,255,255,.65)',
-    borderRadius: 8,
-    padding: '0.4rem 0.9rem',
-    cursor: 'pointer',
-    fontSize: '0.78rem',
-  },
+
   emptyState: {
     padding: '2rem 1.2rem',
     textAlign: 'center',
@@ -723,6 +927,30 @@ const styles = {
     fontStyle: 'italic',
     padding: '0.2rem 0',
   },
+  botTypingIndicator: {
+    fontSize: '0.78rem',
+    color: 'rgba(138,80,255,.7)',
+    fontStyle: 'italic',
+    padding: '0.3rem 0',
+  },
+  botAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg, rgba(138,80,255,.3), rgba(26,107,255,.3))',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '0.9rem',
+    flexShrink: 0,
+    marginRight: '0.3rem',
+  },
+  botSenderName: {
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: '#b98bff',
+    marginBottom: '0.2rem',
+  },
 
   // Input bar
   inputBar: {
@@ -756,6 +984,186 @@ const styles = {
   },
   sendBtn: {
     background: 'linear-gradient(135deg, #1A6BFF, #3a8bff)',
+    border: 'none',
+    borderRadius: 10,
+    padding: '0.55rem 1rem',
+    cursor: 'pointer',
+    fontSize: '1.1rem',
+    color: '#fff',
+    fontWeight: 700,
+    transition: 'opacity 0.2s',
+  },
+
+  // Reference Flow sidebar button
+  refFlowBtn: {
+    width: 'calc(100% - 1rem)',
+    margin: '0.5rem',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.6rem',
+    padding: '0.7rem 0.8rem',
+    borderRadius: 10,
+    border: '1px solid rgba(138,80,255,.15)',
+    color: '#fff',
+    cursor: 'pointer',
+    transition: 'background 0.2s, border-color 0.2s',
+  },
+  refFlowTitle: {
+    fontWeight: 700,
+    fontSize: '0.85rem',
+    fontFamily: 'Syne',
+    color: '#c9a5ff',
+  },
+  refFlowSub: {
+    fontSize: '0.68rem',
+    color: 'rgba(255,255,255,.4)',
+    marginTop: 1,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: 180,
+  },
+
+  // Reference Flow panel (main area)
+  refPanel: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  refHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.7rem',
+    padding: '0.8rem 1.2rem',
+    borderBottom: '1px solid rgba(138,80,255,.15)',
+    background: 'rgba(138,80,255,.04)',
+  },
+  refHeaderTitle: {
+    fontFamily: 'Syne',
+    fontWeight: 700,
+    fontSize: '1rem',
+    color: '#c9a5ff',
+  },
+  refHeaderSub: {
+    fontSize: '0.72rem',
+    color: 'rgba(255,255,255,.4)',
+  },
+  refCloseBtn: {
+    marginLeft: 'auto',
+    background: 'rgba(255,255,255,.05)',
+    border: '1px solid rgba(255,255,255,.1)',
+    color: 'rgba(255,255,255,.5)',
+    borderRadius: 8,
+    width: 28,
+    height: 28,
+    cursor: 'pointer',
+    fontSize: '0.85rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refUploadArea: {
+    padding: '0.6rem 1.2rem',
+    borderBottom: '1px solid rgba(138,80,255,.1)',
+  },
+  refUploadBtn: {
+    width: '100%',
+    padding: '0.7rem',
+    borderRadius: 10,
+    border: '1.5px dashed rgba(138,80,255,.35)',
+    background: 'rgba(138,80,255,.06)',
+    color: '#c9a5ff',
+    cursor: 'pointer',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    transition: 'background 0.2s',
+  },
+  refPdfInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    fontSize: '0.8rem',
+    color: 'rgba(255,255,255,.6)',
+  },
+  refSmallBtn: {
+    background: 'rgba(255,255,255,.05)',
+    border: '1px solid rgba(255,255,255,.1)',
+    color: 'rgba(255,255,255,.55)',
+    borderRadius: 6,
+    padding: '0.25rem 0.5rem',
+    cursor: 'pointer',
+    fontSize: '0.7rem',
+  },
+  refMessagesArea: {
+    flex: 1,
+    overflowY: 'auto',
+    padding: '1rem 1.2rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  refEmptyState: {
+    textAlign: 'center',
+    color: 'rgba(255,255,255,.35)',
+    marginTop: '3rem',
+    fontSize: '0.85rem',
+    lineHeight: 1.6,
+  },
+  refMsgRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '0.4rem',
+  },
+  refBotAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: '50%',
+    background: 'linear-gradient(135deg, rgba(138,80,255,.3), rgba(200,120,255,.3))',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '0.8rem',
+    flexShrink: 0,
+  },
+  refMsgBubble: {
+    maxWidth: '80%',
+    padding: '0.55rem 0.85rem',
+    borderRadius: 12,
+    border: '1px solid',
+  },
+  refMsgText: {
+    fontSize: '0.85rem',
+    lineHeight: 1.55,
+    wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap',
+  },
+  refTyping: {
+    fontSize: '0.8rem',
+    color: 'rgba(138,80,255,.7)',
+    fontStyle: 'italic',
+  },
+  refInputBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    padding: '0.8rem 1.2rem',
+    borderTop: '1px solid rgba(138,80,255,.1)',
+    background: 'rgba(138,80,255,.02)',
+  },
+  refTextInput: {
+    flex: 1,
+    padding: '0.65rem 1rem',
+    borderRadius: 10,
+    border: '1px solid rgba(138,80,255,.2)',
+    background: 'rgba(255,255,255,.04)',
+    color: '#fff',
+    fontSize: '0.85rem',
+    fontFamily: "'DM Sans', sans-serif",
+    outline: 'none',
+  },
+  refSendBtn: {
+    background: 'linear-gradient(135deg, #8a50ff, #b98bff)',
     border: 'none',
     borderRadius: 10,
     padding: '0.55rem 1rem',

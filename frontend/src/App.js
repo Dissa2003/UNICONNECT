@@ -66,9 +66,12 @@ function AppWrapper() {
     };
   }, [navigate]);
 
+  const showNavbar = !['/', '/login', '/register', '/tutor'].includes(location.pathname);
+
   return (
     <> 
-      {!['/', '/login', '/register', '/tutor', '/study-room'].includes(location.pathname) && <Navbar />}
+      {showNavbar && <Navbar />}
+      <div style={showNavbar ? { paddingTop: 72 } : undefined}>
       <Routes>
         <Route path="/" element={<HomePage/>} />
         <Route path="/login" element={<Login/>} />
@@ -80,6 +83,7 @@ function AppWrapper() {
         <Route path="/study-room" element={<Private><StudyRoom/></Private>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </div>
     </>
   );
 }

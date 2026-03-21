@@ -94,6 +94,7 @@ ENV/
 # -----------------------------
 # Sensitive uploads / biometric and generated attendance data
 # -----------------------------
+backend/uploads/
 backend/face_ID_for_login/Attendence/
 backend/face_ID_for_login/uploads/
 backend/face_ID_for_login/faces/

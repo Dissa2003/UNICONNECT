@@ -109,12 +109,11 @@ export default function Navbar() {
         UniConnect
       </div>
       <ul className="nav-links">
-        <li><Link to="/">Home</Link></li>
+        <li><Link to="/" className={location.pathname === '/' ? 'active' : ''}>Home</Link></li>
         <li><Link to="#wellness">Wellness</Link></li>
         <li><Link to="#book">Book a Tutor</Link></li>
-        <li><Link to="#references">References</Link></li>
-        <li><Link to="/student?section=matching">Need a Group</Link></li>
-        <li><Link to="/study-room">Study Room</Link></li>
+        <li><Link to="/student?section=matching" className={location.pathname === '/student' ? 'active' : ''}>Need a Group</Link></li>
+        <li><Link to="/study-room" className={location.pathname === '/study-room' ? 'active' : ''}>Study Room</Link></li>
       </ul>
       <div className="nav-actions">
         {loggedIn ? (
