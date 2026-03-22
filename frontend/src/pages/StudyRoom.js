@@ -6,7 +6,7 @@ import api from '../services/api';
 
 const SOCKET_URL = 'http://localhost:5000';
 
-export default function StudyRoom() {
+export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = false, layoutOffset = 72, showCustomCursor = true, theme = 'student' }) {
   const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
   const [activeGroup, setActiveGroup] = useState(null);
@@ -20,6 +20,8 @@ export default function StudyRoom() {
   const [botTyping, setBotTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [membersOpen, setMembersOpen] = useState(false);
+  const isTutorTheme = theme === 'tutor';
+  const styles = isTutorTheme ? getTutorStyles(baseStyles) : baseStyles;
 
   // Reference Flow state
   const [refOpen, setRefOpen] = useState(false);
@@ -100,6 +102,14 @@ export default function StudyRoom() {
     fetchGroups();
   }, []);
 
+  useEffect(() => {
+    if (!initialGroupId || groups.length === 0) return;
+    const target = groups.find((g) => String(g._id) === String(initialGroupId));
+    if (target && String(activeGroup) !== String(target._id)) {
+      selectGroup(target);
+    }
+  }, [initialGroupId, groups, activeGroup]);
+
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -112,10 +122,11 @@ export default function StudyRoom() {
 
   // Check if user has a Reference Flow PDF loaded
   useEffect(() => {
+    if (hideReferenceFlow) return;
     api.get('/studyroom/ref-info')
       .then((res) => { if (res.data?.loaded) setRefPdf(res.data); })
       .catch(() => {});
-  }, []);
+  }, [hideReferenceFlow]);
 
   // Custom cursor movement
   useEffect(() => {
@@ -368,12 +379,17 @@ export default function StudyRoom() {
   };
 
   // ────────── RENDER ──────────
+  const containerStyle = {
+    ...styles.container,
+    height: `calc(100vh - ${layoutOffset}px)`,
+    cursor: showCustomCursor ? 'none' : 'default',
+  };
 
   return (
-    <div style={styles.container}>
+    <div style={containerStyle}>
       {/* Custom cursor */}
-      <div id="cO" style={styles.cursorOuter}><div className="cur-ring" style={styles.curRing} /></div>
-      <div id="cI" style={styles.cursorInner}><div style={styles.curDot} /></div>
+      {showCustomCursor && <div id="cO" style={styles.cursorOuter}><div className="cur-ring" style={styles.curRing} /></div>}
+      {showCustomCursor && <div id="cI" style={styles.cursorInner}><div style={styles.curDot} /></div>}
 
       {/* Sidebar – group list */}
       <div style={{ ...styles.sidebar, transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)' }}>
@@ -381,27 +397,28 @@ export default function StudyRoom() {
           <h2 style={styles.sidebarTitle}>📚 Study Rooms</h2>
         </div>
 
-        {/* Reference Flow – private PDF chatbot */}
-        <button
-          type="button"
-          onClick={() => setRefOpen(!refOpen)}
-          style={{
-            ...styles.refFlowBtn,
-            background: refOpen ? 'rgba(138,80,255,.15)' : 'rgba(138,80,255,.06)',
-            borderColor: refOpen ? 'rgba(138,80,255,.4)' : 'rgba(138,80,255,.15)',
-          }}
-        >
-          <span style={{ fontSize: '1.2rem' }}>🔮</span>
-          <div style={{ flex: 1, textAlign: 'left' }}>
-            <div style={styles.refFlowTitle}>Reference Flow</div>
-            <div style={styles.refFlowSub}>
-              {refPdf ? `📄 ${refPdf.fileName}` : 'AI Chat & PDF Assistant'}
+        {!hideReferenceFlow && (
+          <button
+            type="button"
+            onClick={() => setRefOpen(!refOpen)}
+            style={{
+              ...styles.refFlowBtn,
+              background: refOpen ? 'rgba(138,80,255,.15)' : 'rgba(138,80,255,.06)',
+              borderColor: refOpen ? 'rgba(138,80,255,.4)' : 'rgba(138,80,255,.15)',
+            }}
+          >
+            <span style={{ fontSize: '1.2rem' }}>🔮</span>
+            <div style={{ flex: 1, textAlign: 'left' }}>
+              <div style={styles.refFlowTitle}>Reference Flow</div>
+              <div style={styles.refFlowSub}>
+                {refPdf ? `📄 ${refPdf.fileName}` : 'AI Chat & PDF Assistant'}
+              </div>
             </div>
-          </div>
-          <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,.3)' }}>
-            {refOpen ? '▲' : '▼'}
-          </span>
-        </button>
+            <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,.3)' }}>
+              {refOpen ? '▲' : '▼'}
+            </span>
+          </button>
+        )}
 
         {loading ? (
           <div style={styles.emptyState}>Loading...</div>
@@ -439,7 +456,7 @@ export default function StudyRoom() {
 
       {/* Main chat area */}
       <div style={styles.chatArea}>
-        {refOpen ? (
+        {!hideReferenceFlow && refOpen ? (
           /* ── Reference Flow Panel ── */
           <div style={styles.refPanel}>
             <div style={styles.refHeader}>
@@ -650,7 +667,115 @@ export default function StudyRoom() {
 
 // ────────── STYLES ──────────
 
-const styles = {
+function getTutorStyles(base) {
+  return {
+    ...base,
+    container: {
+      ...base.container,
+      background: '#f0f4ff',
+      color: '#0d1b3e',
+    },
+    sidebar: {
+      ...base.sidebar,
+      borderRight: '1px solid rgba(26,107,255,.12)',
+      background: '#ffffff',
+    },
+    sidebarHeader: {
+      ...base.sidebarHeader,
+      borderBottom: '1px solid rgba(26,107,255,.12)',
+    },
+    sidebarTitle: {
+      ...base.sidebarTitle,
+      color: '#0a1744',
+    },
+    emptyState: {
+      ...base.emptyState,
+      color: '#7a86a8',
+    },
+    groupItem: {
+      ...base.groupItem,
+      color: '#0d1b3e',
+      border: '1px solid rgba(26,107,255,.12)',
+      background: '#f7f9ff',
+    },
+    groupItemMembers: {
+      ...base.groupItemMembers,
+      color: '#7a86a8',
+    },
+    chatHeader: {
+      ...base.chatHeader,
+      borderBottom: '1px solid rgba(26,107,255,.12)',
+      background: '#ffffff',
+    },
+    hamburger: {
+      ...base.hamburger,
+      color: '#0d1b3e',
+    },
+    chatTitle: {
+      ...base.chatTitle,
+      color: '#0a1744',
+    },
+    chatSubtitle: {
+      ...base.chatSubtitle,
+      color: '#7a86a8',
+    },
+    membersToggle: {
+      ...base.membersToggle,
+      background: 'rgba(26,107,255,.08)',
+      border: '1px solid rgba(26,107,255,.18)',
+      color: '#0d1b3e',
+    },
+    membersPanel: {
+      ...base.membersPanel,
+      borderBottom: '1px solid rgba(26,107,255,.12)',
+      background: '#f7f9ff',
+    },
+    membersPanelTitle: {
+      ...base.membersPanelTitle,
+      color: '#7a86a8',
+    },
+    memberEmail: {
+      ...base.memberEmail,
+      color: '#7a86a8',
+    },
+    messagesContainer: {
+      ...base.messagesContainer,
+      background: '#f7f9ff',
+    },
+    emptyMessages: {
+      ...base.emptyMessages,
+      color: '#7a86a8',
+    },
+    dateBadge: {
+      ...base.dateBadge,
+      background: 'rgba(26,107,255,.08)',
+      color: '#5f6f9a',
+    },
+    noChatSelected: {
+      ...base.noChatSelected,
+      color: '#5f6f9a',
+    },
+    textInput: {
+      ...base.textInput,
+      background: '#ffffff',
+      border: '1px solid rgba(26,107,255,.12)',
+      color: '#0d1b3e',
+    },
+    inputBar: {
+      ...base.inputBar,
+      borderTop: '1px solid rgba(26,107,255,.12)',
+      background: '#ffffff',
+    },
+    attachBtn: {
+      ...base.attachBtn,
+      background: 'rgba(26,107,255,.08)',
+      border: '1px solid rgba(26,107,255,.15)',
+      color: '#0d1b3e',
+    },
+  };
+}
+
+const baseStyles = {
   container: {
     display: 'flex',
     height: 'calc(100vh - 72px)',

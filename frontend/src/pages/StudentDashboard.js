@@ -25,6 +25,16 @@ export default function StudentDashboard(){
   const [currentSection, setCurrentSection] = useState('overview');
   const [avatarEmoji, setAvatarEmoji] = useState('🎓');
   const [matches, setMatches] = useState([]); // matching group data
+  const [tutorQuery, setTutorQuery] = useState({
+    subject: '',
+    maxBudget: '',
+    learningStyle: '',
+    language: 'English',
+    availability: {},
+  });
+  const [tutorMatches, setTutorMatches] = useState([]);
+  const [findingTutors, setFindingTutors] = useState(false);
+  const [bookingTutorIds, setBookingTutorIds] = useState({});
   const [selectedMatchIds, setSelectedMatchIds] = useState([]);
   const [groupRequests, setGroupRequests] = useState([]);
   const [detailsPopup, setDetailsPopup] = useState({ show: false, invitee: null, request: null });
@@ -45,9 +55,12 @@ export default function StudentDashboard(){
   // Load profile on mount
   useEffect(() => {
     loadProfile();
+  }, []);
+
+  useEffect(() => {
     const sectionParam = searchParams.get('section');
     if (sectionParam) setCurrentSection(sectionParam);
-  }, []);
+  }, [searchParams]);
 
   // when profile first arrives (has an _id) fetch only group request list
   const hasFetchedGroupRequestsRef = useRef(false);
@@ -210,6 +223,86 @@ export default function StudentDashboard(){
       setGroupRequests(res.data || []);
     } catch (err) {
       console.log('unable to fetch group requests', err.response?.data || err.message);
+    }
+  };
+
+  const toggleTutorAvailability = (day, time) => {
+    const key = `${day}-${time}`;
+    setTutorQuery((prev) => ({
+      ...prev,
+      availability: {
+        ...prev.availability,
+        [key]: !prev.availability[key],
+      },
+    }));
+  };
+
+  const fetchTutorMatches = async () => {
+    if (!profile?._id) {
+      showToast('Please complete your student profile first', true);
+      return;
+    }
+    if (!tutorQuery.subject.trim()) {
+      showToast('Please enter the subject you need help with', true);
+      return;
+    }
+    if (tutorQuery.maxBudget === '' || Number(tutorQuery.maxBudget) < 0) {
+      showToast('Please enter a valid budget (0 if you need free tutors)', true);
+      return;
+    }
+    if (!tutorQuery.learningStyle.trim()) {
+      showToast('Please select your preferred learning style', true);
+      return;
+    }
+
+    try {
+      setFindingTutors(true);
+      const res = await api.post(`/match/${profile._id}/top-tutors`, {
+        subject: tutorQuery.subject,
+        maxBudget: Number(tutorQuery.maxBudget),
+        learningStyle: tutorQuery.learningStyle,
+        language: tutorQuery.language,
+        availability: tutorQuery.availability,
+      });
+
+      setTutorMatches(res.data || []);
+      if (!res.data || res.data.length === 0) {
+        showToast('No tutors found for your current criteria', true);
+      } else {
+        showToast(`${res.data.length} tutor match${res.data.length > 1 ? 'es' : ''} found`);
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Unable to fetch tutor matches', true);
+    } finally {
+      setFindingTutors(false);
+    }
+  };
+
+  const bookTutor = async (matchItem) => {
+    const tutorProfileId = matchItem?.tutor?._id;
+    if (!tutorProfileId) {
+      showToast('Unable to book this tutor right now', true);
+      return;
+    }
+
+    try {
+      setBookingTutorIds((prev) => ({ ...prev, [tutorProfileId]: true }));
+      await api.post('/tutor-bookings', {
+        studentProfileId: profile._id,
+        tutorProfileId,
+        subject: tutorQuery.subject,
+        maxBudget: Number(tutorQuery.maxBudget),
+        learningStyle: tutorQuery.learningStyle,
+        language: tutorQuery.language,
+        requestedAvailability: tutorQuery.availability,
+        matchScore: matchItem.score || 0,
+        reasons: matchItem.reasons || [],
+      });
+
+      showToast('Tutor booking request sent');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to send booking request', true);
+      setBookingTutorIds((prev) => ({ ...prev, [tutorProfileId]: false }));
     }
   };
 
@@ -460,7 +553,7 @@ export default function StudentDashboard(){
           </div>
 
           <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(255,255,255,.25)',padding:'0.8rem 0.5rem 0.3rem'}}>Profile Sections</div>
-          {['overview','academic','subjects','goals','learning','interests','availability'].map(s => (
+          {['overview','academic','subjects','goals','learning','interests','availability','bookTutor'].map(s => (
             <div key={s} onClick={() => setCurrentSection(s)} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection===s?'rgba(255,255,255,.85)':'rgba(255,255,255,.55)',cursor:'pointer',transition:'all 0.2s',background:currentSection===s?'rgba(26,107,255,.12)':'transparent',border:currentSection===s?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
               <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection===s?'#1A6BFF':'rgba(255,255,255,.15)',flexShrink:0,transition:'all 0.2s'}}></span>
               <span style={{fontSize:'1rem',width:'20px',textAlign:'center',flexShrink:0}}>{getIcon(s)}</span>
@@ -495,6 +588,7 @@ export default function StudentDashboard(){
           {currentSection === 'learning' && renderLearning()}
           {currentSection === 'interests' && renderInterests()}
           {currentSection === 'availability' && renderAvailability()}
+          {currentSection === 'bookTutor' && renderBookTutor()}
           {currentSection === 'matching' && renderMatching()}
         </main>
       </div>
@@ -762,6 +856,126 @@ export default function StudentDashboard(){
             </div>
           </div>
           <p style={{fontSize:'0.75rem',color:'rgba(255,255,255,.25)',marginTop:'1rem'}}>Teal slots = available. Times shown in your local timezone.</p>
+        </Card>
+      </Section>
+    );
+  }
+
+  function renderBookTutor() {
+    return (
+      <Section title="Book a Tutor" subtitle="Enter your learning requirements to find the best-fit tutors">
+        <Card title="📝 Your Tutor Requirements">
+          <div style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(240px, 1fr))',gap:'1rem'}}>
+            <FieldDisplay
+              label="Subject Needed"
+              isEdit
+              value={tutorQuery.subject}
+              onChange={(v) => setTutorQuery((prev) => ({ ...prev, subject: v }))}
+              onSave={() => {}}
+              placeholder="e.g. Data Structures"
+            />
+            <FieldDisplay
+              label="Max Budget per Hour (LKR)"
+              isEdit
+              value={tutorQuery.maxBudget}
+              onChange={(v) => setTutorQuery((prev) => ({ ...prev, maxBudget: v }))}
+              onSave={() => {}}
+              placeholder="Use 0 for free tutors"
+            />
+            <div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>
+              <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'rgba(255,255,255,.4)'}}>Preferred Learning Style</label>
+              <OptionGrid
+                options={['Theory-based','Practical/Hands-on','Exam-oriented','Visual','Auditory','Kinaesthetic','Reading/Writing']}
+                selected={tutorQuery.learningStyle}
+                onChange={(val) => setTutorQuery((prev) => ({ ...prev, learningStyle: cleanEmoji(val) }))}
+              />
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>
+              <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'rgba(255,255,255,.4)'}}>Preferred Language</label>
+              <select
+                style={{width:'100%',padding:'0.72rem 1rem',background:'rgba(255,255,255,.04)',border:'1.5px solid rgba(255,255,255,.09)',borderRadius:'9px',color:'#FFFFFF',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}}
+                value={tutorQuery.language}
+                onChange={(e) => setTutorQuery((prev) => ({ ...prev, language: e.target.value }))}
+              >
+                {['English', 'Sinhala', 'Singlish', 'Tamil'].map((lang) => (
+                  <option key={lang} value={lang}>{lang}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div style={{marginTop:'1rem'}}>
+            <div style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginBottom:'0.6rem'}}>Your Available Time Slots</div>
+            <div style={{overflowX:'auto',minWidth:'480px'}}>
+              <div style={{display:'grid',gridTemplateColumns:'50px repeat(7,1fr)',gap:'4px'}}>
+                <div></div>
+                {days.map(d => <div key={d} style={{fontSize:'0.7rem',color:'rgba(255,255,255,.45)',textAlign:'center',padding:'0.2rem',fontWeight:600,letterSpacing:'0.04em'}}>{d}</div>)}
+                {times.map(t => (
+                  <React.Fragment key={t}>
+                    <div style={{fontSize:'0.62rem',color:'rgba(255,255,255,.45)',textAlign:'center',padding:'0.2rem',fontWeight:600}}>{t}</div>
+                    {days.map(d => {
+                      const key = `${d}-${t}`;
+                      const isOn = tutorQuery.availability[key];
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => toggleTutorAvailability(d, t)}
+                          style={{height:'32px',borderRadius:'6px',background:isOn?'rgba(0,229,195,.12)':'rgba(255,255,255,.04)',border:isOn?'1px solid rgba(0,229,195,.3)':'1px solid rgba(255,255,255,.09)',display:'grid',placeItems:'center',fontSize:'0.65rem',color:isOn?'#00E5C3':'rgba(255,255,255,.2)',cursor:'pointer',transition:'all 0.2s'}}
+                        />
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={fetchTutorMatches}
+            disabled={findingTutors}
+            style={{marginTop:'1rem',padding:'0.7rem 1.4rem',borderRadius:'10px',background:'#1A6BFF',border:'none',color:'white',cursor:'pointer',fontWeight:600}}
+          >
+            {findingTutors ? 'Finding Tutors...' : 'Find Tutors'}
+          </button>
+        </Card>
+
+        <Card title="🎓 Top Tutor Matches">
+          {tutorMatches.length === 0 ? (
+            <div style={{fontSize:'0.9rem',color:'rgba(255,255,255,.55)'}}>
+              Enter your requirements and click Find Tutors to see matches.
+            </div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:'0.7rem'}}>
+              {tutorMatches.map((item, idx) => {
+                const tutor = item.tutor || {};
+                const tutorName = tutor.user?.name || `${tutor.firstName || ''} ${tutor.lastName || ''}`.trim() || 'Tutor';
+                const priceText = tutor.isFree ? 'Free' : `LKR ${Number(tutor.hourlyRate || 0).toFixed(2)}/hr`;
+                const isBooked = Boolean(bookingTutorIds[tutor._id]);
+                return (
+                  <div key={`${tutor._id || idx}`} style={{padding:'0.9rem',background:'rgba(255,255,255,.05)',borderRadius:'10px',border:'1px solid rgba(255,255,255,.1)'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',gap:'0.8rem',alignItems:'center',marginBottom:'0.45rem',flexWrap:'wrap'}}>
+                      <div style={{fontWeight:700,fontSize:'0.92rem'}}>{tutorName}</div>
+                      <div style={{fontSize:'0.8rem',color:'#00E5C3'}}>Match: {Math.round((item.score || 0) * 100)}%</div>
+                    </div>
+                    <div style={{fontSize:'0.8rem',color:'rgba(255,255,255,.65)',marginBottom:'0.45rem'}}>
+                      {priceText} • Style: {tutor.teachingStyle || 'N/A'} • Language: {tutor.language || 'N/A'} • Experience: {tutor.yearsOfExperience || 0} years
+                    </div>
+                    <ul style={{margin:'0 0 0 1rem',padding:0,fontSize:'0.8rem',color:'rgba(255,255,255,.85)',lineHeight:1.4}}>
+                      {(item.reasons || []).length ? item.reasons.map((reason, i) => <li key={`${reason}-${i}`}>{reason}</li>) : <li>No reasons available</li>}
+                    </ul>
+                    <button
+                      type="button"
+                      disabled={isBooked}
+                      onClick={() => bookTutor(item)}
+                      style={{marginTop:'0.65rem',padding:'0.55rem 1rem',borderRadius:'8px',border:'none',background:isBooked?'rgba(0,229,195,.2)':'#1A6BFF',color:isBooked?'#9af3e4':'#fff',cursor:isBooked?'default':'pointer',fontWeight:700,fontSize:'0.8rem'}}
+                    >
+                      {isBooked ? 'Request Sent' : 'Book Tutor'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Card>
       </Section>
     );
@@ -1076,7 +1290,7 @@ const StatCard = ({label, value}) => (
 );
 
 function getIcon(section) {
-  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅'};
+  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅', bookTutor:'👨‍🏫'};
   return icons[section] || '⚙';
 }
 

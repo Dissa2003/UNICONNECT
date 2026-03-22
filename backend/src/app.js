@@ -7,7 +7,7 @@ const cors = require("cors");
 const connectDB = require("./config/db");
 const { initSocket } = require("./socket");
 
-let profileRoutes, matchRoutes, tutorProfileRoutes, studyRoomRoutes;
+let profileRoutes, matchRoutes, tutorProfileRoutes, studyRoomRoutes, tutorBookingRoutes;
 
 try {
   profileRoutes = require("./routes/profileRoutes");
@@ -35,6 +35,13 @@ try {
   console.log("✓ studyRoomRoutes loaded");
 } catch (err) {
   console.error("✗ Error loading studyRoomRoutes:", err.message);
+}
+
+try {
+  tutorBookingRoutes = require("./routes/tutorBookingRoutes");
+  console.log("✓ tutorBookingRoutes loaded");
+} catch (err) {
+  console.error("✗ Error loading tutorBookingRoutes:", err.message);
 }
 
 const app = express();
@@ -68,6 +75,10 @@ if (matchRoutes) {
 // Study room / group chat routes
 if (studyRoomRoutes) {
   app.use("/api/studyroom", studyRoomRoutes);
+}
+
+if (tutorBookingRoutes) {
+  app.use("/api/tutor-bookings", tutorBookingRoutes);
 }
 
 server.listen(5000, async () => {

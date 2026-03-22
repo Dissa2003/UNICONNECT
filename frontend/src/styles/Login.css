@@ -237,9 +237,9 @@ body::before {
 }
 .input-toggle:hover { color:rgba(255,255,255,.7); }
 
-input[type="email"],
-input[type="password"],
-input[type="text"] {
+.layout input[type="email"],
+.layout input[type="password"],
+.layout input[type="text"] {
     width:100%;
     padding:.82rem 1rem .82rem 2.6rem;
     background:rgba(255,255,255,.04);
@@ -249,12 +249,12 @@ input[type="text"] {
     outline:none; transition:border-color .25s, background .25s, box-shadow .25s;
     -webkit-text-fill-color:var(--white);
 }
-input:-webkit-autofill {
+.layout input:-webkit-autofill {
     -webkit-box-shadow:0 0 0 100px rgba(15,37,87,.8) inset;
     -webkit-text-fill-color:var(--white);
 }
-input::placeholder { color:rgba(255,255,255,.2); }
-input:focus {
+.layout input::placeholder { color:rgba(255,255,255,.2); }
+.layout input:focus {
     border-color:var(--azure);
     background:rgba(26,107,255,.06);
     box-shadow:0 0 0 3px rgba(26,107,255,.12);
