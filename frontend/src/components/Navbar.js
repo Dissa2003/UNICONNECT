@@ -6,6 +6,7 @@ import api from '../services/api';
 export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
+  const currentStudentSection = new URLSearchParams(location.search).get('section');
   const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem('token'));
   const [availableRoles, setAvailableRoles] = useState([]);
   const [switchingRole, setSwitchingRole] = useState(false);
@@ -105,14 +106,16 @@ export default function Navbar() {
   return (
     <nav>
       <div className="logo">
-        <div className="logo-icon">✦</div>
+        <div className="logo-icon" style={{ width: 32, height: 32, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+          <img src="/favicon/cropped_circle_image.png" alt="UniConnect" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </div>
         UniConnect
       </div>
       <ul className="nav-links">
         <li><Link to="/" className={location.pathname === '/' ? 'active' : ''}>Home</Link></li>
         <li><Link to="#wellness">Wellness</Link></li>
-        <li><Link to="#book">Book a Tutor</Link></li>
-        <li><Link to="/student?section=matching" className={location.pathname === '/student' ? 'active' : ''}>Need a Group</Link></li>
+        <li><Link to="/student?section=bookTutor" className={location.pathname === '/student' && currentStudentSection === 'bookTutor' ? 'active' : ''}>Book a Tutor</Link></li>
+        <li><Link to="/student?section=matching" className={location.pathname === '/student' && currentStudentSection === 'matching' ? 'active' : ''}>Need a Group</Link></li>
         <li><Link to="/study-room" className={location.pathname === '/study-room' ? 'active' : ''}>Study Room</Link></li>
       </ul>
       <div className="nav-actions">

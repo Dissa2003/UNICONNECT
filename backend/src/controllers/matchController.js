@@ -1,8 +1,17 @@
 const StudentProfile = require("../models/StudentProfile");
+const TutorProfile = require("../models/TutorProfile");
 const GroupRequest = require("../models/GroupRequest");
 const StudyGroup = require("../models/StudyGroup");
 const User = require("../models/User");
 const { computeScore } = require("../services/matchingService");
+const {
+  computeTutorMatchScore,
+  getTutorMatchReasons,
+} = require("../services/tutorMatchingService");
+
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function getMatchReasons(a, b) {
   const reasons = [];
@@ -57,6 +66,72 @@ const getTopMatches = async (req, res) => {
 
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+};
+
+const getTopTutorMatches = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const {
+      subject,
+      maxBudget,
+      learningStyle,
+      language,
+      availability = {},
+    } = req.body || {};
+
+    if (!subject || !String(subject).trim()) {
+      return res.status(400).json({ message: "Subject is required" });
+    }
+    if (maxBudget === undefined || maxBudget === null || Number(maxBudget) < 0) {
+      return res.status(400).json({ message: "Valid budget is required" });
+    }
+    if (!learningStyle || !String(learningStyle).trim()) {
+      return res.status(400).json({ message: "Learning style is required" });
+    }
+
+    const student = await StudentProfile.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+    if (String(student.user) !== String(req.user.id)) {
+      return res.status(403).json({ message: "You can only search tutors for your own profile" });
+    }
+
+    // Filter by subject first to reduce search space.
+    const tutorCandidates = await TutorProfile.find({
+      subjectsYouTeach: {
+        $elemMatch: {
+          $regex: `^${escapeRegex(subject)}$`,
+          $options: "i",
+        },
+      },
+    }).populate("user", "name email");
+
+    const request = {
+      subject,
+      maxBudget: Number(maxBudget),
+      learningStyle,
+      language,
+      availability,
+    };
+
+    const rankedTutors = tutorCandidates
+      .map((tutor) => {
+        const score = computeTutorMatchScore(request, tutor);
+        return {
+          tutor,
+          score: score.total,
+          dimensions: score.dimensions,
+          reasons: getTutorMatchReasons(request, tutor, score.dimensions),
+        };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+
+    return res.json(rankedTutors);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 };
 
@@ -225,6 +300,7 @@ const deleteGroupRequest = async (req, res) => {
 
 module.exports = {
   getTopMatches,
+  getTopTutorMatches,
   createGroupRequest,
   getMyGroupRequests,
   respondToGroupRequest,

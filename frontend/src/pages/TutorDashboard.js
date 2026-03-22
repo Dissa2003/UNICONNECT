@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
 import api from '../services/api';
+import TutorNav from '../components/TutorNav';
 import '../styles/TutorDashboard.css';
 
 const dayOptions = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const timeOptions = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
 
 const initialProfile = {
   firstName: '',
@@ -13,34 +14,29 @@ const initialProfile = {
   dateOfBirth: '',
   gender: '',
   subjectsYouTeach: [],
+  teachingStyle: '',
+  language: '',
+  hourlyRate: 0,
+  isFree: false,
   educationQualification: '',
   yearsOfExperience: 0,
+  averageRating: 0,
   teachingLevel: '',
   availableDays: [],
   availableTime: '',
+  availability: {},
   cityDistrict: '',
   teachingMode: ''
 };
 
 export default function TutorDashboard() {
-  const navigate = useNavigate();
   const [profile, setProfile] = useState(initialProfile);
   const [subjectText, setSubjectText] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
 
-  const greetingName = useMemo(() => {
-    const full = `${profile.firstName || ''} ${profile.lastName || ''}`.trim();
-    return full || 'Tutor';
-  }, [profile.firstName, profile.lastName]);
-
   useEffect(() => {
-    const prevOverflow = document.body.style.overflow;
-    const prevOverflowY = document.body.style.overflowY;
-    document.body.style.overflow = 'auto';
-    document.body.style.overflowY = 'auto';
-
     const loadProfile = async () => {
       try {
         const res = await api.get('/tutor-profile/me');
@@ -48,49 +44,10 @@ export default function TutorDashboard() {
         setProfile(p);
         setSubjectText((p.subjectsYouTeach || []).join(', '));
       } catch (err) {
-        // If profile doesn't exist yet, keep empty default and prefill from token-less known fields if possible.
+        // If profile doesn't exist yet, keep empty default
       }
     };
-
     loadProfile();
-
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      document.body.style.overflowY = prevOverflowY;
-    };
-  }, []);
-
-  useEffect(() => {
-    const cO = document.getElementById('tCurO');
-    const cI = document.getElementById('tCurI');
-    if (!cO || !cI) return;
-    const move = (e) => {
-      cI.style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
-      cO.style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
-    };
-    document.addEventListener('mousemove', move);
-
-    const enter = () => {
-      const ring = cO.querySelector('.cur-ring');
-      if (ring) ring.style.cssText += 'width:52px;height:52px;opacity:.25;';
-    };
-    const leave = () => {
-      const ring = cO.querySelector('.cur-ring');
-      if (ring) ring.style.cssText += 'width:32px;height:32px;opacity:.45;';
-    };
-    const hoverEls = document.querySelectorAll('a,button,input,select,textarea,label');
-    hoverEls.forEach((el) => {
-      el.addEventListener('mouseenter', enter);
-      el.addEventListener('mouseleave', leave);
-    });
-
-    return () => {
-      document.removeEventListener('mousemove', move);
-      hoverEls.forEach((el) => {
-        el.removeEventListener('mouseenter', enter);
-        el.removeEventListener('mouseleave', leave);
-      });
-    };
   }, []);
 
   const showStatus = (msg, error = false) => {
@@ -107,6 +64,22 @@ export default function TutorDashboard() {
     });
   };
 
+  const toggleSlot = (day, time) => {
+    const key = `${day}-${time}`;
+    setProfile((prev) => {
+      const nextAvailability = { ...prev.availability, [key]: !prev.availability?.[key] };
+      const activeDays = dayOptions.filter((d) =>
+        timeOptions.some((t) => nextAvailability[`${d}-${t}`])
+      );
+
+      return {
+        ...prev,
+        availability: nextAvailability,
+        availableDays: activeDays,
+      };
+    });
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
@@ -118,7 +91,10 @@ export default function TutorDashboard() {
       const payload = {
         ...profile,
         subjectsYouTeach: subjects,
-        yearsOfExperience: Number(profile.yearsOfExperience || 0)
+        yearsOfExperience: Number(profile.yearsOfExperience || 0),
+        averageRating: Number(profile.averageRating || 0),
+        isFree: Boolean(profile.isFree),
+        hourlyRate: profile.isFree ? 0 : Number(profile.hourlyRate || 0),
       };
 
       const res = await api.post('/tutor-profile', payload);
@@ -132,38 +108,9 @@ export default function TutorDashboard() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await api.post('/auth/logout');
-    } catch (e) {
-      // proceed anyway
-    } finally {
-      localStorage.removeItem('token');
-      window.dispatchEvent(new Event('auth-changed'));
-      navigate('/login');
-    }
-  };
-
   return (
     <div className="tutor-page">
-      <div className="cur" id="tCurO"><div className="cur-ring" /></div>
-      <div className="cur" id="tCurI"><div className="cur-dot" /></div>
-
-      <nav className="tutor-nav">
-        <a href="#top" className="logo">
-          <div className="logo-icon">✦</div>
-          Uni<em>Connect</em>
-        </a>
-        <ul className="nav-links">
-          <li><a href="#top" className="active">For Tutors</a></li>
-          <li><a href="#profile">Profile</a></li>
-          <li><a href="#features">Features</a></li>
-        </ul>
-        <div className="nav-cta">
-          <button className="btn-nav-ghost" onClick={() => navigate('/tutor')} title="Tutor home">👤 {greetingName}</button>
-          <button className="btn-nav-solid" onClick={handleLogout}>Logout</button>
-        </div>
-      </nav>
+      <TutorNav active="dashboard" />
 
       <section className="hero" id="top">
         <div className="hero-left">
@@ -223,8 +170,37 @@ export default function TutorDashboard() {
             <Field label="Date of Birth" type="date" value={profile.dateOfBirth ? String(profile.dateOfBirth).slice(0, 10) : ''} onChange={(v) => setProfile({ ...profile, dateOfBirth: v })} />
             <SelectField label="Gender" value={profile.gender} onChange={(v) => setProfile({ ...profile, gender: v })} options={['', 'Male', 'Female', 'Other', 'Prefer not to say']} />
             <Field label="Subjects You Teach" value={subjectText} onChange={(v) => setSubjectText(v)} placeholder="Math, Science, English" />
+            <SelectField
+              label="Teaching Style"
+              value={profile.teachingStyle}
+              onChange={(v) => setProfile({ ...profile, teachingStyle: v })}
+              options={['', 'Theory-based', 'Practical/Hands-on', 'Exam-oriented', 'Visual', 'Auditory', 'Kinaesthetic', 'Reading/Writing']}
+            />
+            <SelectField
+              label="Teaching Language"
+              value={profile.language}
+              onChange={(v) => setProfile({ ...profile, language: v })}
+              options={['', 'English', 'Sinhala', 'Singlish', 'Tamil']}
+            />
+            <Field
+              label="Hourly Rate (LKR)"
+              type="number"
+              value={profile.hourlyRate}
+              onChange={(v) => setProfile({ ...profile, hourlyRate: v })}
+            />
+            <CheckboxField
+              label="I offer free tutoring"
+              checked={Boolean(profile.isFree)}
+              onChange={(checked) => setProfile({ ...profile, isFree: checked, hourlyRate: checked ? 0 : profile.hourlyRate })}
+            />
             <Field label="Education Qualification" value={profile.educationQualification} onChange={(v) => setProfile({ ...profile, educationQualification: v })} />
             <Field label="Years of Experience" type="number" value={profile.yearsOfExperience} onChange={(v) => setProfile({ ...profile, yearsOfExperience: v })} />
+            <Field
+              label="Average Rating (0-5)"
+              type="number"
+              value={profile.averageRating}
+              onChange={(v) => setProfile({ ...profile, averageRating: v })}
+            />
             <SelectField label="Teaching Level" value={profile.teachingLevel} onChange={(v) => setProfile({ ...profile, teachingLevel: v })} options={['', 'Primary', 'O/L', 'A/L', 'University']} />
             <SelectField label="Available Time" value={profile.availableTime} onChange={(v) => setProfile({ ...profile, availableTime: v })} options={['', 'Morning', 'Afternoon', 'Evening']} />
             <Field label="City / District" value={profile.cityDistrict} onChange={(v) => setProfile({ ...profile, cityDistrict: v })} />
@@ -243,6 +219,35 @@ export default function TutorDashboard() {
                   />
                   {d}
                 </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="availability-wrap">
+            <div className="days-label">Weekly Availability Slots</div>
+            <div className="availability-grid">
+              <div className="availability-cell time-header" />
+              {dayOptions.map((day) => (
+                <div key={day} className="availability-cell day-header">{day}</div>
+              ))}
+
+              {timeOptions.map((time) => (
+                <React.Fragment key={time}>
+                  <div className="availability-cell time-label">{time}</div>
+                  {dayOptions.map((day) => {
+                    const key = `${day}-${time}`;
+                    const active = Boolean(profile.availability?.[key]);
+                    return (
+                      <button
+                        type="button"
+                        key={key}
+                        className={`slot-btn ${active ? 'active' : ''}`}
+                        onClick={() => toggleSlot(day, time)}
+                        aria-label={`Toggle ${day} ${time}`}
+                      />
+                    );
+                  })}
+                </React.Fragment>
               ))}
             </div>
           </div>
@@ -281,6 +286,20 @@ function SelectField({ label, value, onChange, options }) {
           <option key={o || 'empty'} value={o}>{o || 'Select'}</option>
         ))}
       </select>
+    </div>
+  );
+}
+
+function CheckboxField({ label, checked, onChange }) {
+  return (
+    <div className="field-wrap">
+      <label>{label}</label>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ width: '20px', height: '20px', marginTop: '0.35rem' }}
+      />
     </div>
   );
 }
