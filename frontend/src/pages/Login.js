@@ -337,7 +337,9 @@ export default function Login() {
         setIsLogin(true);
       }, 2000);
     } catch (err) {
-      // ignore or handle server error
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Registration failed. Please try again.';
+      setOverlay({ show: true, title: 'Registration Failed', msg });
+      setTimeout(() => setOverlay({ show: false, title: '', msg: '' }), 3000);
     } finally {
       setRegLoading(false);
     }
@@ -348,7 +350,9 @@ export default function Login() {
       <div className="left">
         <div className="left-bg"></div>
         <div className="logo">
-          <div className="logo-icon">✦</div>
+          <div className="logo-icon">
+            <img src="/favicon/cropped_circle_image.png" alt="UniConnect" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px', WebkitTextFillColor: 'initial' }} />
+          </div>
           UniConnect
         </div>
         <div className="left-hero">

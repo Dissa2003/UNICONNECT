@@ -3,6 +3,9 @@ import Login from './pages/Login';
 import HomePage from './pages/HomePage';
 import StudentDashboard from './pages/StudentDashboard';
 import TutorDashboard from './pages/TutorDashboard';
+import Clients from './pages/Clients';
+import TutorChatting from './pages/TutorChatting';
+import TutorEarnings from './pages/TutorEarnings';
 import AdminDashboard from './pages/AdminDashboard';
 import StudyRoom from './pages/StudyRoom';
 import Navbar from './components/Navbar';
@@ -66,7 +69,7 @@ function AppWrapper() {
     };
   }, [navigate]);
 
-  const showNavbar = !['/', '/login', '/register', '/tutor'].includes(location.pathname);
+  const showNavbar = !['/', '/login', '/register'].includes(location.pathname) && !location.pathname.startsWith('/tutor');
 
   return (
     <> 
@@ -79,6 +82,9 @@ function AppWrapper() {
         <Route path="/register" element={<Login/>} />
         <Route path="/student" element={<Private><StudentDashboard/></Private>} />
         <Route path="/tutor" element={<Private><TutorDashboard/></Private>} />
+        <Route path="/tutor/clients" element={<Private><Clients/></Private>} />
+        <Route path="/tutor/chatting" element={<Private><TutorChatting/></Private>} />
+        <Route path="/tutor/earnings" element={<Private><TutorEarnings/></Private>} />
         <Route path="/admin" element={<Private><AdminDashboard/></Private>} />
         <Route path="/study-room" element={<Private><StudyRoom/></Private>} />
         <Route path="*" element={<Navigate to="/" replace />} />
