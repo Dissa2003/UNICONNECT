@@ -78,6 +78,21 @@ ENV/
 .mypy_cache/
 .ipynb_checkpoints/
 
+# Jupyter / Colab artifacts
+*.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Scikit-learn / joblib model exports
+*.pkl
+*.joblib
+
+# TensorFlow / Keras saved models (local training outputs)
+# Note: backend/stress_detector/model_files/ IS tracked (pre-trained weights needed at runtime)
+saved_model/
+*.h5
+*.keras
+*.tflite
+
 # -----------------------------
 # Databases and dumps
 # -----------------------------

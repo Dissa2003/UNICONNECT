@@ -47,6 +47,10 @@ export default function StudentDashboard(){
   const [faceDeleteOpen, setFaceDeleteOpen] = useState(false);
   const [faceDeleteBusy, setFaceDeleteBusy] = useState(false);
   const [faceDeleteError, setFaceDeleteError] = useState('');
+  // defaults ≈ dataset means: anxiety=11,self_esteem=18,mh_history=0,depression=13,headache=3,bp=2,sleep=3,breathing=3,noise=3,living=3,safety=3,basic=3,academic=3,load=3,teacher=3,career=3,social=2,peer=3,extra=3,bullying=3
+  const [wellnessAnswers, setWellnessAnswers] = useState([11, 18, 0, 13, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3]);
+  const [stressResult, setStressResult] = useState(null);
+  const [stressLoading, setStressLoading] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const faceApiRef = useRef(null);
@@ -553,7 +557,7 @@ export default function StudentDashboard(){
           </div>
 
           <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(255,255,255,.25)',padding:'0.8rem 0.5rem 0.3rem'}}>Profile Sections</div>
-          {['overview','academic','subjects','goals','learning','interests','availability','bookTutor'].map(s => (
+          {['overview','academic','subjects','goals','learning','interests','availability','bookTutor','wellness'].map(s => (
             <div key={s} onClick={() => setCurrentSection(s)} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection===s?'rgba(255,255,255,.85)':'rgba(255,255,255,.55)',cursor:'pointer',transition:'all 0.2s',background:currentSection===s?'rgba(26,107,255,.12)':'transparent',border:currentSection===s?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
               <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection===s?'#1A6BFF':'rgba(255,255,255,.15)',flexShrink:0,transition:'all 0.2s'}}></span>
               <span style={{fontSize:'1rem',width:'20px',textAlign:'center',flexShrink:0}}>{getIcon(s)}</span>
@@ -590,6 +594,7 @@ export default function StudentDashboard(){
           {currentSection === 'availability' && renderAvailability()}
           {currentSection === 'bookTutor' && renderBookTutor()}
           {currentSection === 'matching' && renderMatching()}
+          {currentSection === 'wellness' && renderWellness()}
         </main>
       </div>
 
@@ -1192,6 +1197,179 @@ export default function StudentDashboard(){
       </div>
     );
   }
+
+  function renderWellness() {
+    // Feature order matches StressLevelDataset.csv exactly (same as training)
+    const QUESTIONS = [
+      { id: 0,  text: 'How anxious have you been feeling lately?',                          type: 'slider', min: 0, max: 21, lo: 'Not at all', hi: 'Extremely' },
+      { id: 1,  text: 'How would you rate your self-esteem?',                               type: 'slider', min: 0, max: 30, lo: 'Very low', hi: 'Very high' },
+      { id: 2,  text: 'Do you have a history of mental health issues?',                     type: 'binary' },
+      { id: 3,  text: 'How depressed or hopeless have you been feeling lately?',            type: 'slider', min: 0, max: 27, lo: 'Not at all', hi: 'Severely' },
+      { id: 4,  text: 'How frequently do you experience headaches?',                        type: 'scale',  min: 0, max: 5,  lo: 'Never', hi: 'Daily' },
+      { id: 5,  text: 'What is your blood pressure level?',                                 type: 'choice', options: [{val:1,label:'Normal'},{val:2,label:'High (Stage 1)'},{val:3,label:'High (Stage 2)'}] },
+      { id: 6,  text: 'How would you rate your sleep quality?',                             type: 'scale',  min: 0, max: 5,  lo: 'Very poor', hi: 'Excellent' },
+      { id: 7,  text: 'How often do you experience breathing problems or chest tightness?', type: 'scale',  min: 0, max: 5,  lo: 'Never', hi: 'Very often' },
+      { id: 8,  text: 'How noisy is your study or living environment?',                     type: 'scale',  min: 0, max: 5,  lo: 'Very quiet', hi: 'Extremely noisy' },
+      { id: 9,  text: 'How would you rate your overall living conditions?',                 type: 'scale',  min: 0, max: 5,  lo: 'Very poor', hi: 'Excellent' },
+      { id: 10, text: 'How safe do you feel in your physical environment?',                 type: 'scale',  min: 0, max: 5,  lo: 'Very unsafe', hi: 'Very safe' },
+      { id: 11, text: 'Are your basic needs (food, shelter, transport) being met?',         type: 'scale',  min: 0, max: 5,  lo: 'Not at all', hi: 'Fully met' },
+      { id: 12, text: 'How well are you performing academically right now?',                type: 'scale',  min: 0, max: 5,  lo: 'Very poorly', hi: 'Excellently' },
+      { id: 13, text: 'How heavy is your current study load or workload?',                  type: 'scale',  min: 0, max: 5,  lo: 'Very light', hi: 'Extremely heavy' },
+      { id: 14, text: 'How well do you get along with your teachers or professors?',        type: 'scale',  min: 0, max: 5,  lo: 'Very poorly', hi: 'Very well' },
+      { id: 15, text: 'How concerned are you about your future career prospects?',          type: 'scale',  min: 0, max: 5,  lo: 'Not at all', hi: 'Extremely' },
+      { id: 16, text: 'How strong is your social support network (friends/family)?',        type: 'choice', options: [{val:0,label:'None'},{val:1,label:'Low'},{val:2,label:'Medium'},{val:3,label:'High'}] },
+      { id: 17, text: 'How much peer pressure do you feel from those around you?',          type: 'scale',  min: 0, max: 5,  lo: 'None', hi: 'Extreme' },
+      { id: 18, text: 'How involved are you in extracurricular activities?',                type: 'scale',  min: 0, max: 5,  lo: 'Not at all', hi: 'Very involved' },
+      { id: 19, text: 'How often do you face bullying or harassment?',                      type: 'scale',  min: 0, max: 5,  lo: 'Never', hi: 'Very often' },
+    ];
+
+    const handleAnswerChange = (idx, val) => {
+      const next = [...wellnessAnswers];
+      next[idx] = Number(val);
+      setWellnessAnswers(next);
+    };
+
+    const handleSubmit = async () => {
+      setStressLoading(true);
+      setStressResult(null);
+      try {
+        const res = await api.post('/stress/predict', { answers: wellnessAnswers });
+        setStressResult(res.data);
+      } catch (err) {
+        setStressResult({ error: err.response?.data?.error || err.response?.data?.message || 'Assessment failed. Please try again.' });
+      } finally {
+        setStressLoading(false);
+      }
+    };
+
+    const levelColor  = { Low: '#00E5C3',              Medium: '#F59E0B',              High: '#FF5272' };
+    const levelBg     = { Low: 'rgba(0,229,195,.10)',   Medium: 'rgba(245,158,11,.10)', High: 'rgba(255,82,114,.10)' };
+    const levelBorder = { Low: 'rgba(0,229,195,.25)',   Medium: 'rgba(245,158,11,.25)', High: 'rgba(255,82,114,.25)' };
+    const levelEmoji  = { Low: '😊', Medium: '😐', High: '😰' };
+    const levelRecs   = {
+      Low:    ['Keep up your healthy habits!', 'Continue regular exercise and a good sleep routine.', 'Practice mindfulness to maintain balance.'],
+      Medium: ['Break large tasks into smaller steps to reduce overwhelm.', 'Ensure you get 7–9 hours of sleep each night.', 'Reach out to peers or a counsellor if pressure builds.', 'Short daily walks or light stretching can help reset focus.'],
+      High:   ['Please consider speaking with your university counsellor.', 'Prioritise self-care: sleep, nutrition, and light exercise.', 'Avoid overloading your schedule — it is okay to say no.', 'Connect with your support network: friends, family, or peers.'],
+    };
+
+    return (
+      <div style={{animation:'fadeIn 0.4s ease-out'}}>
+        <h2 style={{fontFamily:'Syne',fontSize:'1.6rem',fontWeight:800,letterSpacing:'-0.04em',background:'linear-gradient(120deg,#FFFFFF,#38BFFF)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text',marginBottom:'0.4rem'}}>
+          Wellness Check
+        </h2>
+        <p style={{color:'rgba(255,255,255,.45)',fontSize:'0.88rem',marginBottom:'2rem'}}>
+          Answer honestly — this AI model estimates your stress level and recommends actions.
+        </p>
+
+        {QUESTIONS.map((q) => (
+          <div key={q.id} style={{marginBottom:'1rem',padding:'1.2rem 1.4rem',background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'14px'}}>
+            <div style={{fontSize:'0.87rem',color:'rgba(255,255,255,.75)',marginBottom:'0.8rem',fontWeight:500}}>
+              <span style={{color:'rgba(255,255,255,.28)',marginRight:'0.5rem',fontSize:'0.72rem'}}>Q{q.id + 1}</span>
+              {q.text}
+            </div>
+
+            {q.type === 'slider' && (
+              <div>
+                <input type="range" min={q.min} max={q.max} step={1} value={wellnessAnswers[q.id]}
+                  onChange={e => handleAnswerChange(q.id, e.target.value)}
+                  style={{width:'100%',accentColor:'#1A6BFF',marginBottom:'0.4rem'}} />
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.7rem',color:'rgba(255,255,255,.35)'}}>
+                  <span>{q.lo} ({q.min})</span>
+                  <span style={{color:'#38BFFF',fontWeight:700,fontSize:'0.85rem'}}>{wellnessAnswers[q.id]}</span>
+                  <span>{q.hi} ({q.max})</span>
+                </div>
+              </div>
+            )}
+
+            {q.type === 'binary' && (
+              <div style={{display:'flex',gap:'0.8rem'}}>
+                {[['No', 0], ['Yes', 1]].map(([label, val]) => (
+                  <button key={label} type="button" onClick={() => handleAnswerChange(q.id, val)}
+                    style={{padding:'0.45rem 1.4rem',borderRadius:'8px',fontSize:'0.82rem',fontWeight:600,cursor:'pointer',transition:'all 0.15s',
+                      background: wellnessAnswers[q.id] === val ? 'rgba(26,107,255,.15)' : 'rgba(255,255,255,.04)',
+                      border:     wellnessAnswers[q.id] === val ? '1.5px solid #1A6BFF' : '1.5px solid rgba(255,255,255,.1)',
+                      color:      wellnessAnswers[q.id] === val ? '#FFFFFF' : 'rgba(255,255,255,.5)'}}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {q.type === 'scale' && (
+              <div>
+                <div style={{display:'flex',gap:'0.4rem'}}>
+                  {Array.from({length: q.max - q.min + 1}, (_, i) => q.min + i).map(n => (
+                    <button key={n} type="button" onClick={() => handleAnswerChange(q.id, n)}
+                      style={{flex:1,padding:'0.5rem 0.1rem',borderRadius:'8px',fontSize:'0.8rem',fontWeight:600,cursor:'pointer',transition:'all 0.15s',textAlign:'center',
+                        background: wellnessAnswers[q.id] === n ? 'rgba(26,107,255,.15)' : 'rgba(255,255,255,.04)',
+                        border:     wellnessAnswers[q.id] === n ? '1.5px solid #1A6BFF' : '1.5px solid rgba(255,255,255,.08)',
+                        color:      wellnessAnswers[q.id] === n ? '#FFFFFF' : 'rgba(255,255,255,.4)'}}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.68rem',color:'rgba(255,255,255,.28)',marginTop:'0.3rem'}}>
+                  <span>← {q.lo}</span><span>{q.hi} →</span>
+                </div>
+              </div>
+            )}
+
+            {q.type === 'choice' && (
+              <div style={{display:'flex',flexWrap:'wrap',gap:'0.5rem'}}>
+                {q.options.map(opt => (
+                  <button key={opt.val} type="button" onClick={() => handleAnswerChange(q.id, opt.val)}
+                    style={{padding:'0.45rem 1rem',borderRadius:'8px',fontSize:'0.82rem',fontWeight:600,cursor:'pointer',transition:'all 0.15s',
+                      background: wellnessAnswers[q.id] === opt.val ? 'rgba(26,107,255,.15)' : 'rgba(255,255,255,.04)',
+                      border:     wellnessAnswers[q.id] === opt.val ? '1.5px solid #1A6BFF' : '1.5px solid rgba(255,255,255,.1)',
+                      color:      wellnessAnswers[q.id] === opt.val ? '#FFFFFF' : 'rgba(255,255,255,.5)'}}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+
+        <button onClick={handleSubmit} disabled={stressLoading}
+          style={{display:'block',width:'100%',padding:'0.9rem',borderRadius:'12px',marginTop:'1rem',
+            background: stressLoading ? 'rgba(26,107,255,.2)' : 'linear-gradient(135deg,#1A6BFF,#00E5C3)',
+            border:'none',color:'#fff',fontSize:'0.95rem',fontWeight:700,
+            cursor: stressLoading ? 'not-allowed' : 'pointer',opacity: stressLoading ? 0.6 : 1}}>
+          {stressLoading ? 'Analysing…' : 'Get My Stress Assessment'}
+        </button>
+
+        {stressResult && !stressResult.error && (
+          <div style={{marginTop:'2rem',padding:'1.6rem',borderRadius:'16px',
+            background: levelBg[stressResult.stress_label],
+            border: `1px solid ${levelBorder[stressResult.stress_label]}`}}>
+            <div style={{display:'flex',alignItems:'center',gap:'1rem',marginBottom:'1.2rem'}}>
+              <span style={{fontSize:'2.4rem'}}>{levelEmoji[stressResult.stress_label]}</span>
+              <div>
+                <div style={{fontSize:'0.72rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginBottom:'0.2rem'}}>AI Assessment Result</div>
+                <div style={{fontFamily:'Syne',fontSize:'1.8rem',fontWeight:800,color: levelColor[stressResult.stress_label]}}>
+                  {stressResult.stress_label} Stress
+                </div>
+              </div>
+            </div>
+            <div style={{fontSize:'0.78rem',fontWeight:600,letterSpacing:'0.08em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginBottom:'0.7rem'}}>Recommendations</div>
+            <ul style={{margin:0,paddingLeft:'1.1rem'}}>
+              {levelRecs[stressResult.stress_label].map((rec, i) => (
+                <li key={i} style={{color:'rgba(255,255,255,.75)',fontSize:'0.87rem',marginBottom:'0.4rem',lineHeight:1.5}}>{rec}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {stressResult?.error && (
+          <div style={{marginTop:'1.5rem',padding:'1rem 1.4rem',borderRadius:'12px',
+            background:'rgba(255,82,114,.08)',border:'1px solid rgba(255,82,114,.2)',
+            color:'#ff98ad',fontSize:'0.85rem'}}>
+            ⚠ {stressResult.error}
+          </div>
+        )}
+      </div>
+    );
+  }
 }
 
 // Helper Components
@@ -1290,7 +1468,7 @@ const StatCard = ({label, value}) => (
 );
 
 function getIcon(section) {
-  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅', bookTutor:'👨‍🏫'};
+  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅', bookTutor:'👨‍🏫', wellness:'💆'};
   return icons[section] || '⚙';
 }
 
