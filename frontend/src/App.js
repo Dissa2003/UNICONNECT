@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { ThemeProvider } from './ThemeContext';
 import Login from './pages/Login';
 import HomePage from './pages/HomePage';
 import StudentDashboard from './pages/StudentDashboard';
@@ -97,7 +98,9 @@ function AppWrapper() {
 function App() {
   return (
     <BrowserRouter>
-      <AppWrapper />
+      <ThemeProvider>
+        <AppWrapper />
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

@@ -341,3 +341,121 @@ footer {
   .features-grid { grid-template-columns: 1fr; }
   .btn-nav-ghost { display: none; }
 }
+
+/* ── Theme toggle button (tutor nav) ── */
+.theme-toggle-btn {
+  font-size: 1rem;
+  padding: .42rem .7rem;
+  line-height: 1;
+  min-width: 38px;
+}
+
+/* ══════════════════════════════════════
+   DARK THEME — tutor section overrides
+   ══════════════════════════════════════ */
+/* Scope CSS var overrides to tutor elements only — avoids polluting other pages
+   (student page uses the same --ink var for its dark body background) */
+html[data-theme="dark"] .tutor-page,
+html[data-theme="dark"] .tutor-nav {
+  --bg: #0f172a;
+  --surface: rgba(22, 34, 62, 0.9);
+  --navy: #e2e8f0;
+  --ink: #f0f4ff;
+  --body: #a0b0d0;
+  --muted: #6a7a9a;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-s: rgba(255, 255, 255, 0.14);
+}
+
+html[data-theme="dark"] .tutor-page {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] body:has(.tutor-page) {
+  background: var(--bg) !important;
+  color: var(--ink) !important;
+}
+
+html[data-theme="dark"] .tutor-nav {
+  background: rgba(10, 14, 26, .88);
+  border-bottom-color: rgba(255, 255, 255, .08);
+}
+
+html[data-theme="dark"] .tutor-nav .logo,
+html[data-theme="dark"] .tutor-nav .logo:hover {
+  color: #e2e8f0 !important;
+  -webkit-text-fill-color: #e2e8f0 !important;
+}
+
+html[data-theme="dark"] .nav-links a,
+html[data-theme="dark"] .nav-links button { color: #a0b0d0; }
+
+html[data-theme="dark"] .nav-links a.active,
+html[data-theme="dark"] .nav-links a:hover,
+html[data-theme="dark"] .nav-links button.active,
+html[data-theme="dark"] .nav-links button:hover { color: #38bfff; background: rgba(56,191,255,.08); }
+
+html[data-theme="dark"] .btn-nav-ghost {
+  border-color: rgba(255,255,255,.18);
+  color: #a0b0d0;
+}
+html[data-theme="dark"] .btn-nav-ghost:hover { background: rgba(255,255,255,.06); }
+
+html[data-theme="dark"] .section-title { color: var(--ink); }
+
+html[data-theme="dark"] .profile-card {
+  background: rgba(22,34,62,.85);
+  border-color: rgba(255,255,255,.08);
+  box-shadow: 0 8px 26px rgba(0,0,0,.35);
+}
+
+html[data-theme="dark"] .feat-card {
+  background: rgba(22,34,62,.7);
+  border-color: rgba(255,255,255,.08);
+}
+html[data-theme="dark"] .feat-card h3 { color: #e2e8f0; }
+html[data-theme="dark"] .feat-card p  { color: #8898b8; }
+
+html[data-theme="dark"] .field-wrap label { color: #6a7a9a; }
+
+html[data-theme="dark"] .field-wrap input,
+html[data-theme="dark"] .field-wrap select {
+  background: rgba(255,255,255,.06) !important;
+  color: #f0f4ff !important;
+  -webkit-text-fill-color: #f0f4ff !important;
+  border-color: rgba(255,255,255,.12);
+}
+html[data-theme="dark"] .field-wrap input:focus,
+html[data-theme="dark"] .field-wrap select:focus {
+  background: rgba(255,255,255,.1) !important;
+  border-color: #38bfff;
+}
+html[data-theme="dark"] .field-wrap input::placeholder { color: #6a7a9a; }
+
+html[data-theme="dark"] .days-label { color: #c0d0e0; }
+html[data-theme="dark"] .day-pill { color: #c0d0e0; border-color: rgba(255,255,255,.12); }
+html[data-theme="dark"] .day-pill.active { background: rgba(26,107,255,.15); color: #38bfff; }
+
+html[data-theme="dark"] .slot-btn { border-color: rgba(255,255,255,.1); background: rgba(255,255,255,.04); }
+html[data-theme="dark"] .slot-btn.active { background: rgba(0,201,167,.18); border-color: rgba(0,201,167,.5); }
+
+html[data-theme="dark"] .booking-item {
+  background: rgba(22,34,62,.7);
+  border-color: rgba(255,255,255,.08);
+}
+html[data-theme="dark"] .booking-student { color: #e2e8f0; }
+html[data-theme="dark"] .booking-meta { color: #a0b0d0; }
+html[data-theme="dark"] .booking-time { color: #6a7a9a; }
+
+html[data-theme="dark"] .earnings-card {
+  background: rgba(22,34,62,.85);
+  border-color: rgba(255,255,255,.08);
+}
+html[data-theme="dark"] .ec-label { color: #6a7a9a; }
+
+html[data-theme="dark"] footer { background: rgba(10,14,26,.9); }
+html[data-theme="dark"] .mock-stat,
+html[data-theme="dark"] .mock-chart { background: rgba(22,34,62,.85); border-color: rgba(255,255,255,.08); }
+html[data-theme="dark"] .mock-stat .mn { color: #e2e8f0; }
+html[data-theme="dark"] .dashboard-mock { background: rgba(22,34,62,.88); border-color: rgba(255,255,255,.08); }

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import '../styles/TutorDashboard.css';
+import { useTheme } from '../ThemeContext';
 
 /**
  * Shared navbar for all tutor-section pages.
@@ -11,6 +12,7 @@ import '../styles/TutorDashboard.css';
  */
 export default function TutorNav({ active }) {
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
 
   // Override global body styles (set by Auth/HomePage/StudyRoom) and hide pseudo-element overlays
   useEffect(() => {
@@ -23,8 +25,8 @@ export default function TutorNav({ active }) {
     };
     document.body.style.overflow = 'auto';
     document.body.style.overflowY = 'auto';
-    document.body.style.background = '#f0f4ff';
-    document.body.style.color = '#0d1b3e';
+    document.body.style.background = theme === 'dark' ? '#0f172a' : '#f0f4ff';
+    document.body.style.color = theme === 'dark' ? '#f0f4ff' : '#0d1b3e';
     document.body.style.cursor = 'none';
 
     const styleTag = document.createElement('style');
@@ -41,7 +43,7 @@ export default function TutorNav({ active }) {
       const tag = document.getElementById('tutor-body-fix');
       if (tag) tag.remove();
     };
-  }, []);
+  }, [theme]);
 
   // Custom cursor tracking
   useEffect(() => {
@@ -136,6 +138,14 @@ export default function TutorNav({ active }) {
         </ul>
 
         <div className="nav-cta">
+          <button
+            className="btn-nav-ghost theme-toggle-btn"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <button className="btn-nav-solid" onClick={handleLogout}>Logout</button>
         </div>
       </nav>
