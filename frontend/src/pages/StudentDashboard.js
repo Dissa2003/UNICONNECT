@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
+import { useTheme } from '../ThemeContext';
 
 const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
@@ -11,6 +12,7 @@ const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-
 export default function StudentDashboard(){
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { theme, toggleTheme } = useTheme();
   const [profile, setProfile] = useState({
     university:'', degreeProgram:'', year:'', personalityType:'',
     subjects:[], weakSubjects:[], strongSubjects:[], skills:[],
@@ -55,6 +57,18 @@ export default function StudentDashboard(){
   const streamRef = useRef(null);
   const faceApiRef = useRef(null);
   const modelsLoadedRef = useRef(false);
+
+  // Body background / color — mirrors what TutorNav.js does on tutor pages
+  useEffect(() => {
+    const prevBg    = document.body.style.background;
+    const prevColor = document.body.style.color;
+    document.body.style.background = theme === 'light' ? '#f0f4ff' : '#0A0E1A';
+    document.body.style.color      = theme === 'light' ? '#0d1b3e' : '#FFFFFF';
+    return () => {
+      document.body.style.background = prevBg;
+      document.body.style.color      = prevColor;
+    };
+  }, [theme]);
 
   // Load profile on mount
   useEffect(() => {
@@ -154,13 +168,22 @@ export default function StudentDashboard(){
   };
 
   const addTag = (arrayName, value) => {
-    if (!value.trim()) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (trimmed.length > 50) {
+      showToast('Entry must be 50 characters or fewer', true);
+      return;
+    }
+    if ((profile[arrayName] || []).some(v => v.toLowerCase() === trimmed.toLowerCase())) {
+      showToast('This entry has already been added', true);
+      return;
+    }
     // when adding strong/weak we require the value already exists in subjects
-    if ((arrayName === 'strongSubjects' || arrayName === 'weakSubjects') && !profile.subjects.includes(value)) {
+    if ((arrayName === 'strongSubjects' || arrayName === 'weakSubjects') && !profile.subjects.some(s => s.toLowerCase() === trimmed.toLowerCase())) {
       showToast('Add the subject to current subjects first', true);
       return;
     }
-    const updated = [...(profile[arrayName] || []), value];
+    const updated = [...(profile[arrayName] || []), trimmed];
     let extra = {};
     // adding a subject doesn't need immediate filtering, but ensure subsets remain valid
     if (arrayName === 'subjects') {
@@ -246,12 +269,18 @@ export default function StudentDashboard(){
       showToast('Please complete your student profile first', true);
       return;
     }
-    if (!tutorQuery.subject.trim()) {
+    const subjectTrimmed = tutorQuery.subject.trim();
+    if (!subjectTrimmed) {
       showToast('Please enter the subject you need help with', true);
       return;
     }
-    if (tutorQuery.maxBudget === '' || Number(tutorQuery.maxBudget) < 0) {
-      showToast('Please enter a valid budget (0 if you need free tutors)', true);
+    if (subjectTrimmed.length > 60) {
+      showToast('Subject name must be 60 characters or fewer', true);
+      return;
+    }
+    const budget = tutorQuery.maxBudget === '' ? NaN : Number(tutorQuery.maxBudget);
+    if (isNaN(budget) || budget < 0 || budget > 1000000) {
+      showToast('Please enter a valid budget between LKR 0 and 1,000,000', true);
       return;
     }
     if (!tutorQuery.learningStyle.trim()) {
@@ -262,8 +291,8 @@ export default function StudentDashboard(){
     try {
       setFindingTutors(true);
       const res = await api.post(`/match/${profile._id}/top-tutors`, {
-        subject: tutorQuery.subject,
-        maxBudget: Number(tutorQuery.maxBudget),
+        subject: subjectTrimmed,
+        maxBudget: budget,
         learningStyle: tutorQuery.learningStyle,
         language: tutorQuery.language,
         availability: tutorQuery.availability,
@@ -511,6 +540,31 @@ export default function StudentDashboard(){
     return Math.round(dims.reduce((a, b) => a + b) / dims.length);
   };
 
+  const isDk = theme !== 'light';
+  const pal = {
+    text:           isDk ? '#FFFFFF'                   : '#0d1b3e',
+    textMuted:      isDk ? 'rgba(255,255,255,.45)'     : '#5a6a8a',
+    textSemi:       isDk ? 'rgba(255,255,255,.65)'     : '#3a4669',
+    textDim:        isDk ? 'rgba(255,255,255,.25)'     : '#7a86a8',
+    textFaint:      isDk ? 'rgba(255,255,255,.15)'     : '#a0abc4',
+    cardBg:         isDk ? 'rgba(255,255,255,.05)'     : 'rgba(255,255,255,0.88)',
+    cardBgHeavy:    isDk ? 'rgba(255,255,255,.09)'     : 'rgba(255,255,255,0.96)',
+    cardBorder:     isDk ? 'rgba(255,255,255,.09)'     : 'rgba(26,107,255,.14)',
+    cardBorderHvy:  isDk ? 'rgba(255,255,255,.16)'     : 'rgba(26,107,255,.28)',
+    sidebarBg:      isDk ? 'rgba(13,23,48,.6)'         : 'rgba(240,244,255,.97)',
+    sidebarBorder:  isDk ? 'rgba(255,255,255,.09)'     : 'rgba(26,107,255,.15)',
+    inputBg:        isDk ? 'rgba(255,255,255,.04)'     : '#f0f4ff',
+    inputBorder:    isDk ? 'rgba(255,255,255,.09)'     : 'rgba(26,107,255,.2)',
+    surfaceBg:      isDk ? 'rgba(255,255,255,.03)'     : 'rgba(240,244,255,.5)',
+    sectionKey:     isDk ? 'rgba(255,255,255,.85)'     : '#0d1b3e',
+    sectionInactive:isDk ? 'rgba(255,255,255,.55)'     : '#5a6a8a',
+    dot:            isDk ? 'rgba(255,255,255,.15)'     : 'rgba(26,107,255,.25)',
+    progressBg:     isDk ? 'rgba(255,255,255,.06)'     : 'rgba(26,107,255,.08)',
+    orbColor1:      isDk ? 'rgba(26,107,255,.16)'      : 'rgba(26,107,255,.06)',
+    orbColor2:      isDk ? 'rgba(0,229,195,.1)'        : 'rgba(0,229,195,.04)',
+    avatarBorder:   isDk ? '#0A0E1A'                   : '#f0f4ff',
+  };
+
   const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const times = ['08:00','10:00','12:00','14:00','16:00','18:00','20:00','22:00'];
 
@@ -521,7 +575,7 @@ export default function StudentDashboard(){
 
   return (
     <>
-      <style>{getStyles()}</style>
+      <style>{getStyles(theme)}</style>
       
       <div className="cur" id="cO" style={{position:'fixed',top:0,left:0,zIndex:9999,pointerEvents:'none'}}>
         <div className="cur-ring" style={{width:'34px',height:'34px',border:'1.5px solid #1A6BFF',borderRadius:'50%',transform:'translate(-50%,-50%)',opacity:0.65,transition:'all 0.25s'}}></div>
@@ -530,44 +584,44 @@ export default function StudentDashboard(){
         <div className="cur-dot" style={{width:'8px',height:'8px',borderRadius:'50%',background:'#00E5C3',transform:'translate(-50%,-50%)'}}></div>
       </div>
 
-      <div className="orb o1" style={{position:'fixed',width:'600px',height:'600px',background:'radial-gradient(circle,rgba(26,107,255,.16),transparent 70%)',top:'-200px',right:'-100px',filter:'blur(120px)',pointerEvents:'none',zIndex:0,borderRadius:'50%',animation:'d1 14s ease-in-out infinite alternate'}}></div>
-      <div className="orb o2" style={{position:'fixed',width:'400px',height:'400px',background:'radial-gradient(circle,rgba(0,229,195,.1),transparent 70%)',bottom:0,left:'-80px',filter:'blur(120px)',pointerEvents:'none',zIndex:0,borderRadius:'50%',animation:'d2 18s ease-in-out infinite alternate'}}></div>
+      <div className="orb o1" style={{position:'fixed',width:'600px',height:'600px',background:`radial-gradient(circle,${pal.orbColor1},transparent 70%)`,top:'-200px',right:'-100px',filter:'blur(120px)',pointerEvents:'none',zIndex:0,borderRadius:'50%',animation:'d1 14s ease-in-out infinite alternate'}}></div>
+      <div className="orb o2" style={{position:'fixed',width:'400px',height:'400px',background:`radial-gradient(circle,${pal.orbColor2},transparent 70%)`,bottom:0,left:'-80px',filter:'blur(120px)',pointerEvents:'none',zIndex:0,borderRadius:'50%',animation:'d2 18s ease-in-out infinite alternate'}}></div>
 
 
       <div style={{position:'relative',zIndex:1,display:'grid',gridTemplateColumns:'280px 1fr',gap:0,height:'calc(100vh - 72px)'}}>
         {/* SIDEBAR */}
-        <aside style={{position:'sticky',top:0,height:'100%',overflowY:'auto',padding:'2rem 1.5rem',background:'rgba(13,23,48,.6)',borderRight:'1px solid rgba(255,255,255,.09)',backdropFilter:'blur(20px)',display:'flex',flexDirection:'column',gap:'0.3rem'}}>
-          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.7rem',padding:'1.5rem 1rem',background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.09)',borderRadius:'16px',marginBottom:'1.2rem',textAlign:'center'}}>
+        <aside style={{position:'sticky',top:0,height:'100%',overflowY:'auto',padding:'2rem 1.5rem',background:pal.sidebarBg,borderRight:`1px solid ${pal.sidebarBorder}`,backdropFilter:'blur(20px)',display:'flex',flexDirection:'column',gap:'0.3rem'}}>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.7rem',padding:'1.5rem 1rem',background:pal.cardBg,border:`1px solid ${pal.cardBorder}`,borderRadius:'16px',marginBottom:'1.2rem',textAlign:'center'}}>
             <div style={{position:'relative',width:'80px',height:'80px',borderRadius:'50%',background:'linear-gradient(135deg,#1A6BFF,#00E5C3)',display:'grid',placeItems:'center',fontSize:'2rem',cursor:'pointer'}} onClick={() => {
               const emojis = ['🎓','👨‍💻','👩‍💻','🧑‍🔬','📚','🚀','⭐','🔬'];
               const idx = emojis.indexOf(avatarEmoji);
               setAvatarEmoji(emojis[(idx + 1) % emojis.length]);
             }}>
               {avatarEmoji}
-              <div style={{position:'absolute',bottom:0,right:0,width:'24px',height:'24px',borderRadius:'50%',background:'#1A6BFF',border:'2px solid #0A0E1A',display:'grid',placeItems:'center',fontSize:'0.65rem'}}>✏</div>
+              <div style={{position:'absolute',bottom:0,right:0,width:'24px',height:'24px',borderRadius:'50%',background:'#1A6BFF',border:`2px solid ${pal.avatarBorder}`,display:'grid',placeItems:'center',fontSize:'0.65rem'}}>✏</div>
             </div>
             <div>
-              <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'0.95rem',letterSpacing:'-0.02em'}}>{profile.displayName || profile.name || 'Student'}</div>
+              <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'0.95rem',letterSpacing:'-0.02em',color:pal.text}}>{profile.displayName || profile.name || 'Student'}</div>
               <div style={{fontSize:'0.72rem',letterSpacing:'0.06em',textTransform:'uppercase',color:'#00E5C3',background:'rgba(0,229,195,.1)',border:'1px solid rgba(0,229,195,.2)',padding:'0.2rem 0.7rem',borderRadius:'99px',marginTop:'0.3rem'}}>Student</div>
               <div style={{marginTop:'0.6rem'}}>
-                <div style={{fontSize:'0.7rem',color:'rgba(255,255,255,.45)',marginBottom:'0.3rem'}}>Profile {completion}% complete</div>
-                <div style={{width:'100%',background:'rgba(255,255,255,.06)',borderRadius:'99px',height:'4px',marginTop:'0.3rem'}}><div style={{height:'100%',borderRadius:'99px',background:'linear-gradient(90deg,#1A6BFF,#00E5C3)',width:`${completion}%`,transition:'width 0.6s cubic-bezier(.16,1,.3,1)'}}></div></div>
+                <div style={{fontSize:'0.7rem',color:pal.textMuted,marginBottom:'0.3rem'}}>Profile {completion}% complete</div>
+                <div style={{width:'100%',background:pal.progressBg,borderRadius:'99px',height:'4px',marginTop:'0.3rem'}}><div style={{height:'100%',borderRadius:'99px',background:'linear-gradient(90deg,#1A6BFF,#00E5C3)',width:`${completion}%`,transition:'width 0.6s cubic-bezier(.16,1,.3,1)'}}></div></div>
               </div>
             </div>
           </div>
 
-          <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(255,255,255,.25)',padding:'0.8rem 0.5rem 0.3rem'}}>Profile Sections</div>
+          <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:pal.textDim,padding:'0.8rem 0.5rem 0.3rem'}}>Profile Sections</div>
           {['overview','academic','subjects','goals','learning','interests','availability','bookTutor','wellness'].map(s => (
-            <div key={s} onClick={() => setCurrentSection(s)} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection===s?'rgba(255,255,255,.85)':'rgba(255,255,255,.55)',cursor:'pointer',transition:'all 0.2s',background:currentSection===s?'rgba(26,107,255,.12)':'transparent',border:currentSection===s?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
-              <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection===s?'#1A6BFF':'rgba(255,255,255,.15)',flexShrink:0,transition:'all 0.2s'}}></span>
+            <div key={s} onClick={() => setCurrentSection(s)} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection===s?pal.sectionKey:pal.sectionInactive,cursor:'pointer',transition:'all 0.2s',background:currentSection===s?'rgba(26,107,255,.12)':'transparent',border:currentSection===s?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
+              <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection===s?'#1A6BFF':pal.dot,flexShrink:0,transition:'all 0.2s'}}></span>
               <span style={{fontSize:'1rem',width:'20px',textAlign:'center',flexShrink:0}}>{getIcon(s)}</span>
               {s.charAt(0).toUpperCase() + s.slice(1)}
             </div>
           ))}
           
-          <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(255,255,255,.25)',padding:'0.8rem 0.5rem 0.3rem',marginTop:'0.5rem'}}>Activity</div>
-          <div onClick={() => setCurrentSection('matching')} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection==='matching'?'rgba(255,255,255,.85)':'rgba(255,255,255,.55)',cursor:'pointer',transition:'all 0.2s',background:currentSection==='matching'?'rgba(26,107,255,.12)':'transparent',border:currentSection==='matching'?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
-            <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection==='matching'?'#1A6BFF':'rgba(255,255,255,.15)',flexShrink:0}}></span>
+          <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:pal.textDim,padding:'0.8rem 0.5rem 0.3rem',marginTop:'0.5rem'}}>Activity</div>
+          <div onClick={() => setCurrentSection('matching')} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection==='matching'?pal.sectionKey:pal.sectionInactive,cursor:'pointer',transition:'all 0.2s',background:currentSection==='matching'?'rgba(26,107,255,.12)':'transparent',border:currentSection==='matching'?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
+            <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection==='matching'?'#1A6BFF':pal.dot,flexShrink:0}}></span>
             <span style={{fontSize:'1rem',width:'20px',textAlign:'center'}}>🔗</span>
             Match Preview
             <span style={{marginLeft:'auto',fontSize:'0.65rem',fontWeight:600,padding:'0.1rem 0.5rem',borderRadius:'99px',background:'rgba(26,107,255,.15)',color:'#38BFFF'}}>New</span>
@@ -606,41 +660,41 @@ export default function StudentDashboard(){
 
       {detailsPopup.show && (
         <div style={{position:'fixed',inset:0,background:'rgba(3,8,16,.72)',zIndex:1200,display:'grid',placeItems:'center',padding:'1rem'}} onClick={() => setDetailsPopup({ show: false, invitee: null, request: null })}>
-          <div style={{width:'min(560px, 92vw)',background:'#0e1a33',border:'1px solid rgba(255,255,255,.16)',borderRadius:'14px',padding:'1rem 1.1rem'}} onClick={(e) => e.stopPropagation()}>
+          <div style={{width:'min(560px, 92vw)',background:isDk?'#0e1a33':'#f0f4ff',border:`1px solid ${pal.cardBorderHvy}`,borderRadius:'14px',padding:'1rem 1.1rem'}} onClick={(e) => e.stopPropagation()}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.8rem'}}>
-              <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'1rem'}}>Match Details</div>
-              <button onClick={() => setDetailsPopup({ show: false, invitee: null, request: null })} style={{background:'transparent',border:'none',color:'rgba(255,255,255,.7)',cursor:'pointer'}}>✕</button>
+              <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'1rem',color:pal.text}}>Match Details</div>
+              <button onClick={() => setDetailsPopup({ show: false, invitee: null, request: null })} style={{background:'transparent',border:'none',color:pal.textMuted,cursor:'pointer'}}>✕</button>
             </div>
-            <div style={{fontSize:'0.84rem',color:'rgba(255,255,255,.8)',marginBottom:'0.65rem'}}>
+            <div style={{fontSize:'0.84rem',color:pal.textSemi,marginBottom:'0.65rem'}}>
               Member: <strong>{detailsPopup.invitee?.user?.name || 'Unknown'}</strong>
             </div>
             <div style={{fontSize:'0.82rem',color:'#38BFFF',marginBottom:'0.65rem'}}>
               Matching Score: {Math.round((detailsPopup.invitee?.matchScore || 0) * 100)}%
             </div>
-            <div style={{fontSize:'0.78rem',color:'rgba(255,255,255,.65)',marginBottom:'0.4rem'}}>Why this match:</div>
-            <ul style={{margin:'0 0 0.8rem 1rem',padding:0,color:'rgba(255,255,255,.85)',fontSize:'0.82rem',lineHeight:1.5}}>
+            <div style={{fontSize:'0.78rem',color:pal.textMuted,marginBottom:'0.4rem'}}>Why this match:</div>
+            <ul style={{margin:'0 0 0.8rem 1rem',padding:0,color:pal.text,fontSize:'0.82rem',lineHeight:1.5}}>
               {(detailsPopup.invitee?.reasons || []).length ? detailsPopup.invitee.reasons.map((r, i) => <li key={`${r}-${i}`}>{r}</li>) : <li>No detailed reasons available</li>}
             </ul>
-            <div style={{fontSize:'0.76rem',color:'rgba(255,255,255,.4)'}}>Request status: {detailsPopup.request?.status || 'pending'} | Invitee status: {detailsPopup.invitee?.status || 'pending'}</div>
+            <div style={{fontSize:'0.76rem',color:pal.textDim}}>Request status: {detailsPopup.request?.status || 'pending'} | Invitee status: {detailsPopup.invitee?.status || 'pending'}</div>
           </div>
         </div>
       )}
 
       {deleteModalOpen && (
         <div style={{position:'fixed',inset:0,background:'rgba(3,8,16,.72)',zIndex:1300,display:'grid',placeItems:'center',padding:'1rem'}} onClick={closeDeleteModal}>
-          <div style={{width:'min(560px, 94vw)',background:'#0e1a33',border:'1px solid rgba(255,255,255,.16)',borderRadius:'14px',padding:'1rem 1.1rem'}} onClick={(e) => e.stopPropagation()}>
+          <div style={{width:'min(560px, 94vw)',background:isDk?'#0e1a33':'#f0f4ff',border:`1px solid ${pal.cardBorderHvy}`,borderRadius:'14px',padding:'1rem 1.1rem'}} onClick={(e) => e.stopPropagation()}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.8rem'}}>
-              <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'1rem'}}>Delete Profile</div>
-              <button onClick={closeDeleteModal} style={{background:'transparent',border:'none',color:'rgba(255,255,255,.7)',cursor:'pointer'}}>✕</button>
+              <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'1rem',color:pal.text}}>Delete Profile</div>
+              <button onClick={closeDeleteModal} style={{background:'transparent',border:'none',color:pal.textMuted,cursor:'pointer'}}>✕</button>
             </div>
 
-            <div style={{fontSize:'0.82rem',color:'rgba(255,255,255,.75)',marginBottom:'0.8rem'}}>
+            <div style={{fontSize:'0.82rem',color:pal.textSemi,marginBottom:'0.8rem'}}>
               Verify your identity with password or Face ID before deletion.
             </div>
 
             <div style={{display:'flex',gap:'0.55rem',marginBottom:'0.8rem'}}>
-              <button onClick={() => setDeleteMethod('password')} style={{padding:'0.45rem 0.75rem',borderRadius:'9px',border:'1px solid rgba(255,255,255,.15)',background:deleteMethod==='password'?'rgba(26,107,255,.2)':'rgba(255,255,255,.04)',color:'#fff',cursor:'pointer'}}>Password</button>
-              <button onClick={() => setDeleteMethod('face')} style={{padding:'0.45rem 0.75rem',borderRadius:'9px',border:'1px solid rgba(255,255,255,.15)',background:deleteMethod==='face'?'rgba(26,107,255,.2)':'rgba(255,255,255,.04)',color:'#fff',cursor:'pointer'}}>Face ID</button>
+              <button onClick={() => setDeleteMethod('password')} style={{padding:'0.45rem 0.75rem',borderRadius:'9px',border:`1px solid ${pal.cardBorder}`,background:deleteMethod==='password'?'rgba(26,107,255,.2)':pal.inputBg,color:pal.text,cursor:'pointer'}}>Password</button>
+              <button onClick={() => setDeleteMethod('face')} style={{padding:'0.45rem 0.75rem',borderRadius:'9px',border:`1px solid ${pal.cardBorder}`,background:deleteMethod==='face'?'rgba(26,107,255,.2)':pal.inputBg,color:pal.text,cursor:'pointer'}}>Face ID</button>
             </div>
 
             {deleteMethod === 'password' ? (
@@ -650,7 +704,7 @@ export default function StudentDashboard(){
                   value={deletePassword}
                   onChange={(e) => setDeletePassword(e.target.value)}
                   placeholder='Enter your password'
-                  style={{width:'100%',padding:'0.65rem 0.75rem',borderRadius:'10px',border:'1px solid rgba(255,255,255,.15)',background:'rgba(255,255,255,.03)',color:'#fff'}}
+                  style={{width:'100%',padding:'0.65rem 0.75rem',borderRadius:'10px',border:`1px solid ${pal.inputBorder}`,background:pal.inputBg,color:pal.text}}
                 />
                 <button onClick={deleteWithPassword} disabled={deleteBusy} style={{marginTop:'0.8rem',padding:'0.6rem 0.95rem',borderRadius:'10px',border:'1px solid rgba(255,82,114,.35)',background:'rgba(255,82,114,.18)',color:'#ffb3c1',cursor:'pointer',fontWeight:700}}>
                   {deleteBusy ? 'Deleting...' : 'Delete Profile'}
@@ -724,10 +778,22 @@ export default function StudentDashboard(){
       <Section title="Academic Information" subtitle="Your university and degree details" onEdit={() => toggleEdit('acad')} isEdit={isEdit}>
         <Card title="🎓 University Details">
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
-            <FieldDisplay label="University" isEdit={isEdit} value={profile.university} onChange={(v) => setProfile({...profile, university: v})} onSave={() => saveFieldValue('university', profile.university)} placeholder="e.g. University of Melbourne" />
-            <FieldDisplay label="Degree Program" isEdit={isEdit} value={profile.degreeProgram} onChange={(v) => setProfile({...profile, degreeProgram: v})} onSave={() => saveFieldValue('degreeProgram', profile.degreeProgram)} placeholder="e.g. Bachelor of Computer Science" />
+            <FieldDisplay label="University" isEdit={isEdit} value={profile.university} onChange={(v) => setProfile({...profile, university: v})} onSave={() => {
+              const v = (profile.university || '').trim();
+              if (v.length > 100) { showToast('University name must be 100 characters or fewer', true); return; }
+              saveFieldValue('university', v);
+            }} placeholder="e.g. University of Melbourne" />
+            <FieldDisplay label="Degree Program" isEdit={isEdit} value={profile.degreeProgram} onChange={(v) => setProfile({...profile, degreeProgram: v})} onSave={() => {
+              const v = (profile.degreeProgram || '').trim();
+              if (v.length > 100) { showToast('Degree program must be 100 characters or fewer', true); return; }
+              saveFieldValue('degreeProgram', v);
+            }} placeholder="e.g. Bachelor of Computer Science" />
             <FieldDisplay label="Year of Study" isEdit={isEdit} value={profile.year} onChange={(v) => setProfile({...profile, year: v})} onSave={() => saveFieldValue('year', profile.year)} isSelect range={['1','2','3','4','5','6']} />
-            <FieldDisplay label="Personality Type" isEdit={isEdit} value={profile.personalityType} onChange={(v) => setProfile({...profile, personalityType: v})} onSave={() => saveFieldValue('personalityType', profile.personalityType)} placeholder="e.g. INTJ" />
+            <FieldDisplay label="Personality Type" isEdit={isEdit} value={profile.personalityType} onChange={(v) => setProfile({...profile, personalityType: v})} onSave={() => {
+              const v = (profile.personalityType || '').trim();
+              if (v && v.length > 10) { showToast('Personality type must be 10 characters or fewer (e.g. INTJ)', true); return; }
+              saveFieldValue('personalityType', v);
+            }} placeholder="e.g. INTJ" />
           </div>
         </Card>
       </Section>
@@ -793,7 +859,7 @@ export default function StudentDashboard(){
       <Section title="Learning Style" subtitle="How you study best" onEdit={() => toggleEdit('learn')} isEdit={isEdit}>
         <Card title="🎯 Learning Style">
           {!isEdit ? (
-            <div style={{fontSize:'0.9rem',color:profile.learningStyle?'#FFFFFF':'rgba(255,255,255,.2)',padding:'0.5rem 0',minHeight:'2rem'}}>{profile.learningStyle || 'Not set'}</div>
+            <div style={{fontSize:'0.9rem',color:profile.learningStyle?pal.text:pal.textFaint,padding:'0.5rem 0',minHeight:'2rem'}}>{profile.learningStyle || 'Not set'}</div>
           ) : (
             <OptionGrid options={['👁 Visual','👂 Auditory','✋ Kinaesthetic','📖 Reading/Writing','🤝 Social','🔇 Solitary']} selected={profile.learningStyle} onChange={(val) => selectOption('learningStyle', cleanEmoji(val))} />
           )}
@@ -801,14 +867,14 @@ export default function StudentDashboard(){
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
           <Card title="⏰ Productivity Time">
             {!isEdit ? (
-              <div style={{fontSize:'0.9rem',color:profile.productivityTime?'#FFFFFF':'rgba(255,255,255,.2)',padding:'0.5rem 0',minHeight:'2rem'}}>{profile.productivityTime || 'Not set'}</div>
+              <div style={{fontSize:'0.9rem',color:profile.productivityTime?pal.text:pal.textFaint,padding:'0.5rem 0',minHeight:'2rem'}}>{profile.productivityTime || 'Not set'}</div>
             ) : (
               <OptionGrid options={['🌅 Early Morning','☀️ Morning','🌤 Afternoon','🌇 Evening','🌙 Night Owl']} selected={profile.productivityTime} onChange={(val) => selectOption('productivityTime', cleanEmoji(val))} />
             )}
           </Card>
           <Card title="🏠 Study Mode">
             {!isEdit ? (
-              <div style={{fontSize:'0.9rem',color:profile.studyMode?'#FFFFFF':'rgba(255,255,255,.2)',padding:'0.5rem 0',minHeight:'2rem'}}>{profile.studyMode || 'Not set'}</div>
+              <div style={{fontSize:'0.9rem',color:profile.studyMode?pal.text:pal.textFaint,padding:'0.5rem 0',minHeight:'2rem'}}>{profile.studyMode || 'Not set'}</div>
             ) : (
               <OptionGrid options={['🤝 Group','👤 Solo','🔀 Mixed','💻 Online','🏛 In-person']} selected={profile.studyMode} onChange={(val) => selectOption('studyMode', cleanEmoji(val))} />
             )}
@@ -841,10 +907,10 @@ export default function StudentDashboard(){
           <div style={{overflowX:'auto',minWidth:'480px'}}>
             <div style={{display:'grid',gridTemplateColumns:'50px repeat(7,1fr)',gap:'4px'}}>
               <div></div>
-              {days.map(d => <div key={d} style={{fontSize:'0.7rem',color:'rgba(255,255,255,.45)',textAlign:'center',padding:'0.2rem',fontWeight:600,letterSpacing:'0.04em'}}>{d}</div>)}
+              {days.map(d => <div key={d} style={{fontSize:'0.7rem',color:pal.textMuted,textAlign:'center',padding:'0.2rem',fontWeight:600,letterSpacing:'0.04em'}}>{d}</div>)}
               {times.map(t => (
                 <React.Fragment key={t}>
-                  <div style={{fontSize:'0.62rem',color:'rgba(255,255,255,.45)',textAlign:'center',padding:'0.2rem',fontWeight:600}}>{t}</div>
+                  <div style={{fontSize:'0.62rem',color:pal.textMuted,textAlign:'center',padding:'0.2rem',fontWeight:600}}>{t}</div>
                   {days.map(d => {
                     const key = `${d}-${t}`;
                     const isOn = profile.availability[key];
@@ -852,7 +918,7 @@ export default function StudentDashboard(){
                       <div 
                         key={key} 
                         onClick={() => toggleAvailability(d, t)}
-                        style={{height:'32px',borderRadius:'6px',background:isOn?'rgba(0,229,195,.12)':'rgba(255,255,255,.04)',border:isOn?'1px solid rgba(0,229,195,.3)':'1px solid rgba(255,255,255,.09)',display:'grid',placeItems:'center',fontSize:'0.65rem',color:isOn?'#00E5C3':'rgba(255,255,255,.2)',cursor:'pointer',transition:'all 0.2s'}}
+                        style={{height:'32px',borderRadius:'6px',background:isOn?'rgba(0,229,195,.12)':pal.inputBg,border:isOn?'1px solid rgba(0,229,195,.3)':`1px solid ${pal.inputBorder}`,display:'grid',placeItems:'center',fontSize:'0.65rem',color:isOn?'#00E5C3':pal.textFaint,cursor:'pointer',transition:'all 0.2s'}}
                       />
                     );
                   })}
@@ -860,7 +926,7 @@ export default function StudentDashboard(){
               ))}
             </div>
           </div>
-          <p style={{fontSize:'0.75rem',color:'rgba(255,255,255,.25)',marginTop:'1rem'}}>Teal slots = available. Times shown in your local timezone.</p>
+          <p style={{fontSize:'0.75rem',color:pal.textDim,marginTop:'1rem'}}>Teal slots = available. Times shown in your local timezone.</p>
         </Card>
       </Section>
     );
@@ -888,7 +954,7 @@ export default function StudentDashboard(){
               placeholder="Use 0 for free tutors"
             />
             <div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>
-              <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'rgba(255,255,255,.4)'}}>Preferred Learning Style</label>
+              <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:pal.textMuted}}>Preferred Learning Style</label>
               <OptionGrid
                 options={['Theory-based','Practical/Hands-on','Exam-oriented','Visual','Auditory','Kinaesthetic','Reading/Writing']}
                 selected={tutorQuery.learningStyle}
@@ -896,9 +962,9 @@ export default function StudentDashboard(){
               />
             </div>
             <div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>
-              <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'rgba(255,255,255,.4)'}}>Preferred Language</label>
+              <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:pal.textMuted}}>Preferred Language</label>
               <select
-                style={{width:'100%',padding:'0.72rem 1rem',background:'rgba(255,255,255,.04)',border:'1.5px solid rgba(255,255,255,.09)',borderRadius:'9px',color:'#FFFFFF',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}}
+                style={{width:'100%',padding:'0.72rem 1rem',background:pal.inputBg,border:`1.5px solid ${pal.inputBorder}`,borderRadius:'9px',color:pal.text,fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}}
                 value={tutorQuery.language}
                 onChange={(e) => setTutorQuery((prev) => ({ ...prev, language: e.target.value }))}
               >
@@ -910,14 +976,14 @@ export default function StudentDashboard(){
           </div>
 
           <div style={{marginTop:'1rem'}}>
-            <div style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginBottom:'0.6rem'}}>Your Available Time Slots</div>
+            <div style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:pal.textMuted,marginBottom:'0.6rem'}}>Your Available Time Slots</div>
             <div style={{overflowX:'auto',minWidth:'480px'}}>
               <div style={{display:'grid',gridTemplateColumns:'50px repeat(7,1fr)',gap:'4px'}}>
                 <div></div>
-                {days.map(d => <div key={d} style={{fontSize:'0.7rem',color:'rgba(255,255,255,.45)',textAlign:'center',padding:'0.2rem',fontWeight:600,letterSpacing:'0.04em'}}>{d}</div>)}
+                {days.map(d => <div key={d} style={{fontSize:'0.7rem',color:pal.textMuted,textAlign:'center',padding:'0.2rem',fontWeight:600,letterSpacing:'0.04em'}}>{d}</div>)}
                 {times.map(t => (
                   <React.Fragment key={t}>
-                    <div style={{fontSize:'0.62rem',color:'rgba(255,255,255,.45)',textAlign:'center',padding:'0.2rem',fontWeight:600}}>{t}</div>
+                    <div style={{fontSize:'0.62rem',color:pal.textMuted,textAlign:'center',padding:'0.2rem',fontWeight:600}}>{t}</div>
                     {days.map(d => {
                       const key = `${d}-${t}`;
                       const isOn = tutorQuery.availability[key];
@@ -925,7 +991,7 @@ export default function StudentDashboard(){
                         <div
                           key={key}
                           onClick={() => toggleTutorAvailability(d, t)}
-                          style={{height:'32px',borderRadius:'6px',background:isOn?'rgba(0,229,195,.12)':'rgba(255,255,255,.04)',border:isOn?'1px solid rgba(0,229,195,.3)':'1px solid rgba(255,255,255,.09)',display:'grid',placeItems:'center',fontSize:'0.65rem',color:isOn?'#00E5C3':'rgba(255,255,255,.2)',cursor:'pointer',transition:'all 0.2s'}}
+                          style={{height:'32px',borderRadius:'6px',background:isOn?'rgba(0,229,195,.12)':pal.inputBg,border:isOn?'1px solid rgba(0,229,195,.3)':`1px solid ${pal.inputBorder}`,display:'grid',placeItems:'center',fontSize:'0.65rem',color:isOn?'#00E5C3':pal.textFaint,cursor:'pointer',transition:'all 0.2s'}}
                         />
                       );
                     })}
@@ -946,7 +1012,7 @@ export default function StudentDashboard(){
 
         <Card title="🎓 Top Tutor Matches">
           {tutorMatches.length === 0 ? (
-            <div style={{fontSize:'0.9rem',color:'rgba(255,255,255,.55)'}}>
+            <div style={{fontSize:'0.9rem',color:pal.textMuted}}>
               Enter your requirements and click Find Tutors to see matches.
             </div>
           ) : (
@@ -957,15 +1023,15 @@ export default function StudentDashboard(){
                 const priceText = tutor.isFree ? 'Free' : `LKR ${Number(tutor.hourlyRate || 0).toFixed(2)}/hr`;
                 const isBooked = Boolean(bookingTutorIds[tutor._id]);
                 return (
-                  <div key={`${tutor._id || idx}`} style={{padding:'0.9rem',background:'rgba(255,255,255,.05)',borderRadius:'10px',border:'1px solid rgba(255,255,255,.1)'}}>
+                  <div key={`${tutor._id || idx}`} style={{padding:'0.9rem',background:pal.cardBg,borderRadius:'10px',border:`1px solid ${pal.cardBorder}`}}>
                     <div style={{display:'flex',justifyContent:'space-between',gap:'0.8rem',alignItems:'center',marginBottom:'0.45rem',flexWrap:'wrap'}}>
-                      <div style={{fontWeight:700,fontSize:'0.92rem'}}>{tutorName}</div>
+                      <div style={{fontWeight:700,fontSize:'0.92rem',color:pal.text}}>{tutorName}</div>
                       <div style={{fontSize:'0.8rem',color:'#00E5C3'}}>Match: {Math.round((item.score || 0) * 100)}%</div>
                     </div>
-                    <div style={{fontSize:'0.8rem',color:'rgba(255,255,255,.65)',marginBottom:'0.45rem'}}>
+                    <div style={{fontSize:'0.8rem',color:pal.textSemi,marginBottom:'0.45rem'}}>
                       {priceText} • Style: {tutor.teachingStyle || 'N/A'} • Language: {tutor.language || 'N/A'} • Experience: {tutor.yearsOfExperience || 0} years
                     </div>
-                    <ul style={{margin:'0 0 0 1rem',padding:0,fontSize:'0.8rem',color:'rgba(255,255,255,.85)',lineHeight:1.4}}>
+                    <ul style={{margin:'0 0 0 1rem',padding:0,fontSize:'0.8rem',color:pal.text,lineHeight:1.4}}>
                       {(item.reasons || []).length ? item.reasons.map((reason, i) => <li key={`${reason}-${i}`}>{reason}</li>) : <li>No reasons available</li>}
                     </ul>
                     <button
@@ -1008,15 +1074,15 @@ export default function StudentDashboard(){
         <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'2rem',gap:'1rem',flexWrap:'wrap'}}>
           <div>
             <div style={{fontFamily:'Syne',fontWeight:800,fontSize:'clamp(1.6rem,2.5vw,2.2rem)',letterSpacing:'-0.04em',marginBottom:'0.3rem'}}>Match Preview</div>
-            <div style={{fontSize:'0.875rem',color:'rgba(255,255,255,.45)',fontWeight:300}}>How your profile scores against potential peers</div>
+            <div style={{fontSize:'0.875rem',color:pal.textMuted,fontWeight:300}}>How your profile scores against potential peers</div>
           </div>
         </div>
 
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'1.2rem 1.5rem',background:'linear-gradient(135deg,rgba(26,107,255,.08),rgba(0,229,195,.04))',border:'1px solid rgba(26,107,255,.15)',borderRadius:'12px',marginBottom:'1rem'}}>
           <div>
-            <div style={{fontSize:'0.75rem',color:'rgba(255,255,255,.45)',marginBottom:'0.2rem'}}>Overall Match Score</div>
+            <div style={{fontSize:'0.75rem',color:pal.textMuted,marginBottom:'0.2rem'}}>Overall Match Score</div>
             <div style={{fontFamily:'Syne',fontSize:'2rem',fontWeight:800,background:'linear-gradient(90deg,#1A6BFF,#00E5C3)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>{matchScore}%</div>
-            <div style={{fontSize:'0.75rem',color:'rgba(255,255,255,.3)',marginTop:'0.1rem'}}>Based on profile completeness</div>
+            <div style={{fontSize:'0.75rem',color:pal.textDim,marginTop:'0.1rem'}}>Based on profile completeness</div>
           </div>
           <div style={{fontSize:'3rem'}}>🔗</div>
         </div>
@@ -1024,9 +1090,9 @@ export default function StudentDashboard(){
         <Card title="📊 Matching Dimensions">
           {dims.map((d, i) => (
             <div key={i} style={{display:'flex',alignItems:'center',gap:'0.8rem',marginBottom:'0.8rem'}}>
-              <div style={{fontSize:'0.82rem',color:'rgba(255,255,255,.45)',width:'130px',flexShrink:0}}>{d.label}</div>
-              <div style={{flex:1,height:'5px',background:'rgba(255,255,255,.06)',borderRadius:'99px',overflow:'hidden'}}><div style={{height:'100%',borderRadius:'99px',background:'linear-gradient(90deg,#1A6BFF,#00E5C3)',width:`${d.pct}%`,transition:'width 0.8s cubic-bezier(.16,1,.3,1)'}}></div></div>
-              <div style={{fontSize:'0.75rem',color:'rgba(255,255,255,.45)',width:'30px',textAlign:'right',flexShrink:0}}>{Math.round(d.pct)}%</div>
+              <div style={{fontSize:'0.82rem',color:pal.textMuted,width:'130px',flexShrink:0}}>{d.label}</div>
+              <div style={{flex:1,height:'5px',background:pal.progressBg,borderRadius:'99px',overflow:'hidden'}}><div style={{height:'100%',borderRadius:'99px',background:'linear-gradient(90deg,#1A6BFF,#00E5C3)',width:`${d.pct}%`,transition:'width 0.8s cubic-bezier(.16,1,.3,1)'}}></div></div>
+              <div style={{fontSize:'0.75rem',color:pal.textMuted,width:'30px',textAlign:'right',flexShrink:0}}>{Math.round(d.pct)}%</div>
             </div>
           ))}
         </Card>
@@ -1034,9 +1100,9 @@ export default function StudentDashboard(){
         <Card title="💡 Tips to Improve Your Score">
           <div style={{display:'flex',flexDirection:'column',gap:'0.7rem'}}>
             {suggestions.slice(0, 4).map((s, i) => (
-              <div key={i} style={{display:'flex',alignItems:'flex-start',gap:'0.8rem',padding:'0.8rem 0',borderBottom:'1px solid rgba(255,255,255,.09)'}}>
+              <div key={i} style={{display:'flex',alignItems:'flex-start',gap:'0.8rem',padding:'0.8rem 0',borderBottom:`1px solid ${pal.cardBorder}`}}>
                 <span style={{fontSize:'1.1rem'}}>{s.icon}</span>
-                <span style={{fontSize:'0.85rem',color:'rgba(255,255,255,.65)',lineHeight:1.5}}>{s.text}</span>
+                <span style={{fontSize:'0.85rem',color:pal.textSemi,lineHeight:1.5}}>{s.text}</span>
               </div>
             ))}
           </div>
@@ -1050,10 +1116,10 @@ export default function StudentDashboard(){
                 const matchId = m.student?._id;
                 const selected = selectedMatchIds.includes(matchId);
                 return (
-                <div key={m.student?._id||i} style={{padding:'0.5rem',background:'rgba(255,255,255,.05)',borderRadius:'8px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div key={m.student?._id||i} style={{padding:'0.5rem',background:pal.cardBg,borderRadius:'8px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                   <div>
-                    <div style={{fontWeight:600}}>{m.student?.name || 'Unknown'}</div>
-                    <div style={{fontSize:'0.8rem',color:'rgba(255,255,255,.6)'}}>
+                    <div style={{fontWeight:600,color:pal.text}}>{m.student?.name || 'Unknown'}</div>
+                    <div style={{fontSize:'0.8rem',color:pal.textMuted}}>
                       Score: {Math.round((m.score||0)*100)}%
                       {m.student?.university && ` • ${m.student.university}`}
                       {m.student?.degreeProgram && ` – ${m.student.degreeProgram}`}
@@ -1070,13 +1136,13 @@ export default function StudentDashboard(){
               })}
             </div>
           ) : (
-            <div style={{fontSize:'0.9rem',color:'rgba(255,255,255,.5)'}}>
+            <div style={{fontSize:'0.9rem',color:pal.textMuted}}>
               {manualMatchChecked
                 ? 'Sorry, no matched students.'
                 : 'No group matches yet. Complete more profile sections (subjects, availability, interests) to generate matches.'}
             </div>
           )}
-          <div style={{fontSize:'0.78rem',color:'rgba(255,255,255,.5)',marginTop:'0.7rem'}}>
+          <div style={{fontSize:'0.78rem',color:pal.textMuted,marginTop:'0.7rem'}}>
             Selected: {selectedMatchIds.length}/4 members (maximum)
           </div>
           <button onClick={() => fetchMatches(true)} style={{marginTop:'1rem',padding:'0.7rem 1.4rem',borderRadius:'10px',background:'#1A6BFF',border:'none',color:'white',cursor:'pointer',fontWeight:500}}>Find Matching Members</button>
@@ -1085,7 +1151,7 @@ export default function StudentDashboard(){
 
         <Card title="📨 Group Requests">
           {groupRequests.length === 0 ? (
-            <div style={{fontSize:'0.9rem',color:'rgba(255,255,255,.55)'}}>No group requests yet.</div>
+            <div style={{fontSize:'0.9rem',color:pal.textMuted}}>No group requests yet.</div>
           ) : (
             <div style={{display:'flex',flexDirection:'column',gap:'0.7rem'}}>
               {groupRequests.map((req) => {
@@ -1097,9 +1163,9 @@ export default function StudentDashboard(){
                 const acceptedCount = (req.invitees || []).filter((i) => i.status === 'accepted').length;
                 const totalInvitees = (req.invitees || []).length;
                 return (
-                  <div key={req._id} style={{padding:'0.8rem',background:'rgba(255,255,255,.05)',borderRadius:'10px',border:'1px solid rgba(255,255,255,.1)'}}>
+                  <div key={req._id} style={{padding:'0.8rem',background:pal.cardBg,borderRadius:'10px',border:`1px solid ${pal.cardBorder}`}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'0.5rem',marginBottom:'0.35rem'}}>
-                      <div style={{fontWeight:600,fontSize:'0.9rem'}}>
+                      <div style={{fontWeight:600,fontSize:'0.9rem',color:pal.text}}>
                         {mine ? 'Request sent by you' : `Request from ${req.requestedBy?.name || 'member'}`}
                       </div>
                       <span style={{fontSize:'0.72rem',padding:'0.2rem 0.55rem',borderRadius:'99px',background:req.status==='grouped'?'rgba(0,229,195,.18)':'rgba(255,184,0,.15)',color:req.status==='grouped'?'#00E5C3':'#ffd369'}}>{req.status}</span>
@@ -1107,16 +1173,16 @@ export default function StudentDashboard(){
 
                     {/* Acceptance progress */}
                     {req.status === 'pending' && (
-                      <div style={{fontSize:'0.78rem',color:'rgba(255,255,255,.5)',marginBottom:'0.5rem'}}>
+                      <div style={{fontSize:'0.78rem',color:pal.textMuted,marginBottom:'0.5rem'}}>
                         ✅ {acceptedCount}/{totalInvitees} members accepted — all must accept to form group
                       </div>
                     )}
 
                     {/* Members with their acceptance status */}
-                    <div style={{fontSize:'0.78rem',color:'rgba(255,255,255,.45)',marginBottom:'0.15rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.04em'}}>Members</div>
+                    <div style={{fontSize:'0.78rem',color:pal.textMuted,marginBottom:'0.15rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.04em'}}>Members</div>
                     <div style={{display:'flex',flexDirection:'column',gap:'0.3rem',marginBottom:'0.5rem'}}>
                       {/* Requester (always accepted) */}
-                      <div style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.35rem 0.6rem',borderRadius:'8px',background:'rgba(255,255,255,.03)'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:'0.5rem',padding:'0.35rem 0.6rem',borderRadius:'8px',background:pal.surfaceBg}}>
                         <span style={{fontSize:'0.82rem',flex:1}}>{mine ? 'You (requester)' : (req.requestedBy?.name || 'Requester')}</span>
                         <span style={{fontSize:'0.68rem',padding:'0.15rem 0.45rem',borderRadius:'99px',background:'rgba(0,229,195,.15)',color:'#00E5C3'}}>✓ creator</span>
                       </div>
@@ -1132,7 +1198,7 @@ export default function StudentDashboard(){
                             <button
                               type="button"
                               onClick={() => setDetailsPopup({ show: true, invitee, request: req })}
-                              style={{padding:'0.2rem 0.5rem',borderRadius:'6px',border:'1px solid rgba(255,255,255,.12)',background:'rgba(255,255,255,.04)',color:'rgba(255,255,255,.6)',cursor:'pointer',fontSize:'0.68rem'}}
+                              style={{padding:'0.2rem 0.5rem',borderRadius:'6px',border:`1px solid ${pal.cardBorderHvy}`,background:pal.surfaceBg,color:pal.textMuted,cursor:'pointer',fontSize:'0.68rem'}}
                             >
                               Details
                             </button>
@@ -1144,7 +1210,7 @@ export default function StudentDashboard(){
                     {/* Accept / Reject for my pending invite */}
                     {pendingForMe && (
                       <div style={{display:'flex',gap:'0.6rem',marginTop:'0.5rem',padding:'0.6rem',background:'rgba(26,107,255,.06)',borderRadius:'10px',border:'1px solid rgba(26,107,255,.15)'}}>
-                        <div style={{flex:1,fontSize:'0.82rem',color:'rgba(255,255,255,.7)',display:'flex',alignItems:'center'}}>You have been invited to this group</div>
+                        <div style={{flex:1,fontSize:'0.82rem',color:pal.textSemi,display:'flex',alignItems:'center'}}>You have been invited to this group</div>
                         <button type="button" onClick={() => respondToRequest(req._id, 'accept')} style={{padding:'0.5rem 1rem',borderRadius:'8px',background:'#00E5C3',border:'none',color:'#03121f',cursor:'pointer',fontWeight:700,fontSize:'0.82rem'}}>✓ Accept</button>
                         <button type="button" onClick={() => respondToRequest(req._id, 'reject')} style={{padding:'0.5rem 1rem',borderRadius:'8px',background:'rgba(255,82,114,.15)',border:'1px solid rgba(255,82,114,.35)',color:'#ff8aa2',cursor:'pointer',fontWeight:600,fontSize:'0.82rem'}}>✕ Reject</button>
                       </div>
@@ -1254,17 +1320,17 @@ export default function StudentDashboard(){
 
     return (
       <div style={{animation:'fadeIn 0.4s ease-out'}}>
-        <h2 style={{fontFamily:'Syne',fontSize:'1.6rem',fontWeight:800,letterSpacing:'-0.04em',background:'linear-gradient(120deg,#FFFFFF,#38BFFF)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text',marginBottom:'0.4rem'}}>
+        <h2 style={{fontFamily:'Syne',fontSize:'1.6rem',fontWeight:800,letterSpacing:'-0.04em',background:'linear-gradient(120deg,#1A6BFF,#38BFFF)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text',marginBottom:'0.4rem'}}>
           Wellness Check
         </h2>
-        <p style={{color:'rgba(255,255,255,.45)',fontSize:'0.88rem',marginBottom:'2rem'}}>
+        <p style={{color:pal.textMuted,fontSize:'0.88rem',marginBottom:'2rem'}}>
           Answer honestly — this AI model estimates your stress level and recommends actions.
         </p>
 
         {QUESTIONS.map((q) => (
-          <div key={q.id} style={{marginBottom:'1rem',padding:'1.2rem 1.4rem',background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'14px'}}>
-            <div style={{fontSize:'0.87rem',color:'rgba(255,255,255,.75)',marginBottom:'0.8rem',fontWeight:500}}>
-              <span style={{color:'rgba(255,255,255,.28)',marginRight:'0.5rem',fontSize:'0.72rem'}}>Q{q.id + 1}</span>
+          <div key={q.id} style={{marginBottom:'1rem',padding:'1.2rem 1.4rem',background:pal.inputBg,border:`1px solid ${pal.cardBorder}`,borderRadius:'14px'}}>
+            <div style={{fontSize:'0.87rem',color:pal.textSemi,marginBottom:'0.8rem',fontWeight:500}}>
+              <span style={{color:pal.textDim,marginRight:'0.5rem',fontSize:'0.72rem'}}>Q{q.id + 1}</span>
               {q.text}
             </div>
 
@@ -1273,7 +1339,7 @@ export default function StudentDashboard(){
                 <input type="range" min={q.min} max={q.max} step={1} value={wellnessAnswers[q.id]}
                   onChange={e => handleAnswerChange(q.id, e.target.value)}
                   style={{width:'100%',accentColor:'#1A6BFF',marginBottom:'0.4rem'}} />
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.7rem',color:'rgba(255,255,255,.35)'}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.7rem',color:pal.textDim}}>
                   <span>{q.lo} ({q.min})</span>
                   <span style={{color:'#38BFFF',fontWeight:700,fontSize:'0.85rem'}}>{wellnessAnswers[q.id]}</span>
                   <span>{q.hi} ({q.max})</span>
@@ -1286,9 +1352,9 @@ export default function StudentDashboard(){
                 {[['No', 0], ['Yes', 1]].map(([label, val]) => (
                   <button key={label} type="button" onClick={() => handleAnswerChange(q.id, val)}
                     style={{padding:'0.45rem 1.4rem',borderRadius:'8px',fontSize:'0.82rem',fontWeight:600,cursor:'pointer',transition:'all 0.15s',
-                      background: wellnessAnswers[q.id] === val ? 'rgba(26,107,255,.15)' : 'rgba(255,255,255,.04)',
-                      border:     wellnessAnswers[q.id] === val ? '1.5px solid #1A6BFF' : '1.5px solid rgba(255,255,255,.1)',
-                      color:      wellnessAnswers[q.id] === val ? '#FFFFFF' : 'rgba(255,255,255,.5)'}}>
+                      background: wellnessAnswers[q.id] === val ? 'rgba(26,107,255,.15)' : pal.inputBg,
+                      border:     wellnessAnswers[q.id] === val ? '1.5px solid #1A6BFF' : `1.5px solid ${pal.inputBorder}`,
+                      color:      wellnessAnswers[q.id] === val ? pal.text : pal.textMuted}}>
                     {label}
                   </button>
                 ))}
@@ -1301,14 +1367,14 @@ export default function StudentDashboard(){
                   {Array.from({length: q.max - q.min + 1}, (_, i) => q.min + i).map(n => (
                     <button key={n} type="button" onClick={() => handleAnswerChange(q.id, n)}
                       style={{flex:1,padding:'0.5rem 0.1rem',borderRadius:'8px',fontSize:'0.8rem',fontWeight:600,cursor:'pointer',transition:'all 0.15s',textAlign:'center',
-                        background: wellnessAnswers[q.id] === n ? 'rgba(26,107,255,.15)' : 'rgba(255,255,255,.04)',
-                        border:     wellnessAnswers[q.id] === n ? '1.5px solid #1A6BFF' : '1.5px solid rgba(255,255,255,.08)',
-                        color:      wellnessAnswers[q.id] === n ? '#FFFFFF' : 'rgba(255,255,255,.4)'}}>
+                        background: wellnessAnswers[q.id] === n ? 'rgba(26,107,255,.15)' : pal.inputBg,
+                        border:     wellnessAnswers[q.id] === n ? '1.5px solid #1A6BFF' : `1.5px solid ${pal.inputBorder}`,
+                        color:      wellnessAnswers[q.id] === n ? pal.text : pal.textMuted}}>
                       {n}
                     </button>
                   ))}
                 </div>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.68rem',color:'rgba(255,255,255,.28)',marginTop:'0.3rem'}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.68rem',color:pal.textDim,marginTop:'0.3rem'}}>
                   <span>← {q.lo}</span><span>{q.hi} →</span>
                 </div>
               </div>
@@ -1319,9 +1385,9 @@ export default function StudentDashboard(){
                 {q.options.map(opt => (
                   <button key={opt.val} type="button" onClick={() => handleAnswerChange(q.id, opt.val)}
                     style={{padding:'0.45rem 1rem',borderRadius:'8px',fontSize:'0.82rem',fontWeight:600,cursor:'pointer',transition:'all 0.15s',
-                      background: wellnessAnswers[q.id] === opt.val ? 'rgba(26,107,255,.15)' : 'rgba(255,255,255,.04)',
-                      border:     wellnessAnswers[q.id] === opt.val ? '1.5px solid #1A6BFF' : '1.5px solid rgba(255,255,255,.1)',
-                      color:      wellnessAnswers[q.id] === opt.val ? '#FFFFFF' : 'rgba(255,255,255,.5)'}}>
+                      background: wellnessAnswers[q.id] === opt.val ? 'rgba(26,107,255,.15)' : pal.inputBg,
+                      border:     wellnessAnswers[q.id] === opt.val ? '1.5px solid #1A6BFF' : `1.5px solid ${pal.inputBorder}`,
+                      color:      wellnessAnswers[q.id] === opt.val ? pal.text : pal.textMuted}}>
                     {opt.label}
                   </button>
                 ))}
@@ -1345,16 +1411,16 @@ export default function StudentDashboard(){
             <div style={{display:'flex',alignItems:'center',gap:'1rem',marginBottom:'1.2rem'}}>
               <span style={{fontSize:'2.4rem'}}>{levelEmoji[stressResult.stress_label]}</span>
               <div>
-                <div style={{fontSize:'0.72rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginBottom:'0.2rem'}}>AI Assessment Result</div>
+                <div style={{fontSize:'0.72rem',letterSpacing:'0.1em',textTransform:'uppercase',color:pal.textMuted,marginBottom:'0.2rem'}}>AI Assessment Result</div>
                 <div style={{fontFamily:'Syne',fontSize:'1.8rem',fontWeight:800,color: levelColor[stressResult.stress_label]}}>
                   {stressResult.stress_label} Stress
                 </div>
               </div>
             </div>
-            <div style={{fontSize:'0.78rem',fontWeight:600,letterSpacing:'0.08em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginBottom:'0.7rem'}}>Recommendations</div>
+            <div style={{fontSize:'0.78rem',fontWeight:600,letterSpacing:'0.08em',textTransform:'uppercase',color:pal.textMuted,marginBottom:'0.7rem'}}>Recommendations</div>
             <ul style={{margin:0,paddingLeft:'1.1rem'}}>
               {levelRecs[stressResult.stress_label].map((rec, i) => (
-                <li key={i} style={{color:'rgba(255,255,255,.75)',fontSize:'0.87rem',marginBottom:'0.4rem',lineHeight:1.5}}>{rec}</li>
+                <li key={i} style={{color:pal.textSemi,fontSize:'0.87rem',marginBottom:'0.4rem',lineHeight:1.5}}>{rec}</li>
               ))}
             </ul>
           </div>
@@ -1374,8 +1440,8 @@ export default function StudentDashboard(){
 
 // Helper Components
 const Card = ({title, children}) => (
-  <div style={{background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.09)',borderRadius:'16px',padding:'1.8rem',marginBottom:'1.2rem',backdropFilter:'blur(10px)',transition:'border-color 0.3s'}}>
-    {title && <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'0.95rem',letterSpacing:'-0.01em',marginBottom:'1.2rem',display:'flex',alignItems:'center',gap:'0.6rem'}}>{title}</div>}
+  <div style={{background:'var(--sd-card-bg)',border:'1px solid var(--sd-border)',borderRadius:'16px',padding:'1.8rem',marginBottom:'1.2rem',backdropFilter:'blur(10px)',transition:'border-color 0.3s, background 0.3s'}}>
+    {title && <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'0.95rem',letterSpacing:'-0.01em',marginBottom:'1.2rem',display:'flex',alignItems:'center',gap:'0.6rem',color:'var(--sd-text)'}}>{title}</div>}
     {children}
   </div>
 );
@@ -1385,9 +1451,9 @@ const Section = ({title, subtitle, children, onEdit, isEdit, onSave}) => (
     <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:'2rem',gap:'1rem',flexWrap:'wrap'}}>
       <div>
         <div style={{fontFamily:'Syne',fontWeight:800,fontSize:'clamp(1.6rem,2.5vw,2.2rem)',letterSpacing:'-0.04em',marginBottom:'0.3rem'}}>{title}</div>
-        <div style={{fontSize:'0.875rem',color:'rgba(255,255,255,.45)',fontWeight:300}}>{subtitle}</div>
+        <div style={{fontSize:'0.875rem',color:'var(--sd-muted)',fontWeight:300}}>{subtitle}</div>
       </div>
-      {onEdit && <button type="button" onClick={onEdit} style={{padding:'0.6rem 1.3rem',borderRadius:'10px',fontSize:'0.85rem',fontWeight:500,background:isEdit?'linear-gradient(135deg,#1A6BFF,#3a8bff)':'rgba(255,255,255,.05)',border:isEdit?'none':'1px solid rgba(255,255,255,.09)',color:'white',cursor:'pointer',transition:'all 0.25s'}}>{isEdit?'💾 Save':'✏ Edit'}</button>}
+      {onEdit && <button type="button" onClick={onEdit} style={{padding:'0.6rem 1.3rem',borderRadius:'10px',fontSize:'0.85rem',fontWeight:500,background:isEdit?'linear-gradient(135deg,#1A6BFF,#3a8bff)':'var(--sd-card-bg)',border:isEdit?'none':'1px solid var(--sd-border)',color:'var(--sd-text)',cursor:'pointer',transition:'all 0.25s'}}>{isEdit?'💾 Save':'✏ Edit'}</button>}
       {onSave && <button type="button" onClick={onSave} style={{padding:'0.6rem 1.3rem',borderRadius:'10px',fontSize:'0.85rem',fontWeight:500,background:'linear-gradient(135deg,#1A6BFF,#3a8bff)',border:'none',color:'white',cursor:'pointer',boxShadow:'0 6px 24px rgba(26,107,255,.3)',transition:'all 0.25s'}}>💾 Save</button>}
     </div>
     {children}
@@ -1396,30 +1462,30 @@ const Section = ({title, subtitle, children, onEdit, isEdit, onSave}) => (
 
 const Field = ({label, value}) => (
   <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',marginBottom:'0.8rem'}}>
-    <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'rgba(255,255,255,.4)'}}>{label}</label>
-    <div style={{fontSize:'0.9rem',color:'#FFFFFF',padding:'0.5rem 0',borderBottom:'1px solid transparent',minHeight:'2rem',lineHeight:1.5}} className={value && value !== '—' ? '' : 'empty'}>{value || '—'}</div>
+    <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--sd-muted)'}}>{label}</label>
+    <div style={{fontSize:'0.9rem',color:'var(--sd-text)',padding:'0.5rem 0',borderBottom:'1px solid transparent',minHeight:'2rem',lineHeight:1.5}} className={value && value !== '—' ? '' : 'empty'}>{value || '—'}</div>
   </div>
 );
 
 const FieldDisplay = ({label, isEdit, value, onChange, onSave, placeholder, isSelect, range}) => (
   <div style={{display:'flex',flexDirection:'column',gap:'0.4rem'}}>
-    <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'rgba(255,255,255,.4)'}}>{label}</label>
+    <label style={{fontSize:'0.75rem',fontWeight:600,letterSpacing:'0.05em',textTransform:'uppercase',color:'var(--sd-muted)'}}>{label}</label>
     {!isEdit ? (
-      <div style={{fontSize:'0.9rem',color:'#FFFFFF',padding:'0.5rem 0',borderBottom:'1px solid transparent',minHeight:'2rem',lineHeight:1.5}}>{value || '—'}</div>
+      <div style={{fontSize:'0.9rem',color:'var(--sd-text)',padding:'0.5rem 0',borderBottom:'1px solid transparent',minHeight:'2rem',lineHeight:1.5}}>{value || '—'}</div>
     ) : isSelect ? (
-      <select style={{width:'100%',padding:'0.72rem 1rem',background:'rgba(255,255,255,.04)',border:'1.5px solid rgba(255,255,255,.09)',borderRadius:'9px',color:'#FFFFFF',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} value={value || ''} onChange={(e) => onChange(e.target.value)} onBlur={onSave}>
+      <select style={{width:'100%',padding:'0.72rem 1rem',background:'var(--sd-input-bg)',border:'1.5px solid var(--sd-input-border)',borderRadius:'9px',color:'var(--sd-text)',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} value={value || ''} onChange={(e) => onChange(e.target.value)} onBlur={onSave}>
         <option value="">Select...</option>
         {range && range.map(r => <option key={r}>{r}</option>)}
       </select>
     ) : (
-      <input style={{width:'100%',padding:'0.72rem 1rem',background:'rgba(255,255,255,.04)',border:'1.5px solid rgba(255,255,255,.09)',borderRadius:'9px',color:'#FFFFFF',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} type="text" placeholder={placeholder} value={value || ''} onChange={(e) => onChange(e.target.value)} onBlur={onSave} />
+      <input style={{width:'100%',padding:'0.72rem 1rem',background:'var(--sd-input-bg)',border:'1.5px solid var(--sd-input-border)',borderRadius:'9px',color:'var(--sd-text)',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} type="text" placeholder={placeholder} value={value || ''} onChange={(e) => onChange(e.target.value)} onBlur={onSave} />
     )}
   </div>
 );
 
 const TagList = ({items, colorClass, onRemove}) => (
   <div style={{display:'flex',flexWrap:'wrap',gap:'0.4rem',padding:'0.3rem 0'}}>
-    {(items && items.length > 0) ? items.map((t, i) => <TagDisplay key={i} text={t} colorClass={colorClass} onRemove={() => onRemove(i)} />) : <span style={{fontSize:'0.82rem',fontStyle:'italic',color:'rgba(255,255,255,.2)'}}>None added</span>}
+    {(items && items.length > 0) ? items.map((t, i) => <TagDisplay key={i} text={t} colorClass={colorClass} onRemove={() => onRemove(i)} />) : <span style={{fontSize:'0.82rem',fontStyle:'italic',color:'var(--sd-faint)'}}>None added</span>}
   </div>
 );
 
@@ -1439,7 +1505,7 @@ const TagInput = ({onAdd}) => {
   const [val, setVal] = React.useState('');
   return (
     <div style={{display:'flex',gap:'0.5rem',marginTop:'0.5rem'}}>
-      <input style={{flex:1,padding:'0.72rem 1rem',background:'rgba(255,255,255,.04)',border:'1.5px solid rgba(255,255,255,.09)',borderRadius:'9px',color:'#FFFFFF',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} type="text" placeholder="Add..." value={val} onChange={e=>setVal(e.target.value)} onKeyPress={(e)=>{if(e.key==='Enter'){e.preventDefault();onAdd(val);setVal('');}}} />
+      <input style={{flex:1,padding:'0.72rem 1rem',background:'var(--sd-input-bg)',border:'1.5px solid var(--sd-input-border)',borderRadius:'9px',color:'var(--sd-text)',fontFamily:'DM Sans',fontSize:'0.87rem',outline:'none'}} type="text" placeholder="Add..." value={val} onChange={e=>setVal(e.target.value)} onKeyPress={(e)=>{if(e.key==='Enter'){e.preventDefault();onAdd(val);setVal('');}}} />
       <button type="button" onClick={()=>{onAdd(val);setVal('');}} style={{padding:'0.6rem 0.9rem',borderRadius:'8px',fontSize:'0.8rem',background:'#1A6BFF',border:'none',color:'white',cursor:'pointer',fontWeight:500,whiteSpace:'nowrap'}}>+ Add</button>
     </div>
   );
@@ -1452,7 +1518,7 @@ const OptionGrid = ({options, selected, onChange}) => (
         type="button"
         key={i}
         onClick={() => onChange(opt)}
-        style={{padding:'0.4rem 0.9rem',borderRadius:'8px',fontSize:'0.8rem',fontWeight:500,background:cleanEmoji(opt)===selected?'rgba(26,107,255,.12)':'rgba(255,255,255,.04)',border:cleanEmoji(opt)===selected?'1.5px solid #1A6BFF':'1.5px solid rgba(255,255,255,.09)',color:cleanEmoji(opt)===selected?'#FFFFFF':'rgba(255,255,255,.55)',cursor:'pointer',transition:'all 0.2s'}}
+        style={{padding:'0.4rem 0.9rem',borderRadius:'8px',fontSize:'0.8rem',fontWeight:500,background:cleanEmoji(opt)===selected?'rgba(26,107,255,.12)':'var(--sd-opt-bg)',border:cleanEmoji(opt)===selected?'1.5px solid #1A6BFF':'1.5px solid var(--sd-opt-border)',color:cleanEmoji(opt)===selected?'var(--sd-text)':'var(--sd-opt-color)',cursor:'pointer',transition:'all 0.2s'}}
       >
         {opt}
       </button>
@@ -1461,9 +1527,9 @@ const OptionGrid = ({options, selected, onChange}) => (
 );
 
 const StatCard = ({label, value}) => (
-  <div style={{padding:'1.2rem',background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.09)',borderRadius:'12px',textAlign:'center'}}>
-    <div style={{fontFamily:'Syne',fontSize:'1.6rem',fontWeight:800,letterSpacing:'-0.04em',background:'linear-gradient(120deg,#FFFFFF,#38BFFF)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>{value}</div>
-    <div style={{fontSize:'0.7rem',color:'rgba(255,255,255,.3)',marginTop:'0.15rem',letterSpacing:'0.03em'}}>{label}</div>
+  <div style={{padding:'1.2rem',background:'var(--sd-card-bg)',border:'1px solid var(--sd-border)',borderRadius:'12px',textAlign:'center'}}>
+    <div style={{fontFamily:'Syne',fontSize:'1.6rem',fontWeight:800,letterSpacing:'-0.04em',background:'linear-gradient(120deg,#1A6BFF,#38BFFF)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text'}}>{value}</div>
+    <div style={{fontSize:'0.7rem',color:'var(--sd-dim)',marginTop:'0.15rem',letterSpacing:'0.03em'}}>{label}</div>
   </div>
 );
 
@@ -1476,27 +1542,41 @@ function cleanEmoji(str) {
   return str.replace(/^[\p{Emoji}\s]+/u,'').trim();
 }
 
-function getStyles() {
+function getStyles(theme) {
+  const isDk = theme !== 'light';
   return `
     :root {
-      --ink: #0A0E1A;
+      --ink: ${isDk ? '#0A0E1A' : '#f0f4ff'};
       --azure: #1A6BFF;
       --aqua: #00E5C3;
-      --muted: rgba(255,255,255,.45);
-      --glass: rgba(255,255,255,.05);
-      --border: rgba(255,255,255,.09);
-      --white: #FFFFFF;
+      --muted: ${isDk ? 'rgba(255,255,255,.45)' : '#5a6a8a'};
+      --glass: ${isDk ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,0.88)'};
+      --border: ${isDk ? 'rgba(255,255,255,.09)' : 'rgba(26,107,255,.14)'};
+      --white: ${isDk ? '#FFFFFF' : '#0d1b3e'};
+      --sd-text: ${isDk ? '#FFFFFF' : '#0d1b3e'};
+      --sd-muted: ${isDk ? 'rgba(255,255,255,.45)' : '#5a6a8a'};
+      --sd-dim: ${isDk ? 'rgba(255,255,255,.25)' : '#7a86a8'};
+      --sd-faint: ${isDk ? 'rgba(255,255,255,.15)' : '#a0abc4'};
+      --sd-card-bg: ${isDk ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,0.88)'};
+      --sd-border: ${isDk ? 'rgba(255,255,255,.09)' : 'rgba(26,107,255,.14)'};
+      --sd-border-hvy: ${isDk ? 'rgba(255,255,255,.16)' : 'rgba(26,107,255,.28)'};
+      --sd-input-bg: ${isDk ? 'rgba(255,255,255,.04)' : '#f0f4ff'};
+      --sd-input-border: ${isDk ? 'rgba(255,255,255,.09)' : 'rgba(26,107,255,.2)'};
+      --sd-opt-bg: ${isDk ? 'rgba(255,255,255,.04)' : '#f0f4ff'};
+      --sd-opt-border: ${isDk ? 'rgba(255,255,255,.09)' : 'rgba(26,107,255,.15)'};
+      --sd-opt-color: ${isDk ? 'rgba(255,255,255,.55)' : '#3a4669'};
+      --sd-surface: ${isDk ? 'rgba(255,255,255,.03)' : 'rgba(240,244,255,.5)'};
     }
     * { box-sizing: border-box; }
-    body { background: var(--ink); color: var(--white); margin: 0; padding: 0; }
+    body { background: var(--ink); color: var(--sd-text); margin: 0; padding: 0; }
     body::before {
       content: '';
       position: fixed;
       inset: 0;
       z-index: 0;
       background-image:
-        linear-gradient(rgba(26,107,255,.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(26,107,255,.04) 1px, transparent 1px);
+        linear-gradient(${isDk ? 'rgba(26,107,255,.04)' : 'rgba(26,107,255,.03)'} 1px, transparent 1px),
+        linear-gradient(90deg, ${isDk ? 'rgba(26,107,255,.04)' : 'rgba(26,107,255,.03)'} 1px, transparent 1px);
       background-size: 60px 60px;
       pointer-events: none;
     }
@@ -1504,8 +1584,8 @@ function getStyles() {
     @keyframes d1 { to { transform: translate(40px, 60px); } }
     @keyframes d2 { to { transform: translate(-30px, -40px); } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } }
-    .empty { color: rgba(255,255,255,.2) !important; font-style: italic; }
+    .empty { color: var(--sd-muted) !important; font-style: italic; }
     input:focus, select:focus { border-color: var(--azure) !important; background: rgba(26,107,255,.06) !important; }
-    select option { background: #0D1730; color: white; }
+    select option { background: ${isDk ? '#0D1730' : '#f0f4ff'}; color: ${isDk ? 'white' : '#0d1b3e'}; }
   `;
 }

@@ -34,6 +34,9 @@ export default function Login() {
   const [regRole, setRegRole] = useState('student');
   const [regEmailErr, setRegEmailErr] = useState(false);
   const [regPassErr, setRegPassErr] = useState(false);
+  const [regFirstErr, setRegFirstErr] = useState('');
+  const [regLastErr, setRegLastErr] = useState('');
+  const [regConfirmErr, setRegConfirmErr] = useState(false);
   const [regStrength, setRegStrength] = useState(0);
   const [regLoading, setRegLoading] = useState(false);
 
@@ -124,6 +127,13 @@ export default function Login() {
   const switchTab = login => {
     setIsLogin(login);
     setOverlay({show: false, title: '', msg: ''});
+    setLoginEmailErr(false);
+    setLoginPassErr(false);
+    setRegEmailErr(false);
+    setRegPassErr(false);
+    setRegFirstErr('');
+    setRegLastErr('');
+    setRegConfirmErr(false);
   };
 
   const setRole = (role, panel) => {
@@ -276,14 +286,26 @@ export default function Login() {
   };
 
   const handleLogin = async () => {
-    // no client-side validation; submit whatever the user enters
     setLoginEmailErr(false);
     setLoginPassErr(false);
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    let hasError = false;
+
+    if (!loginEmail.trim() || !emailRegex.test(loginEmail.trim())) {
+      setLoginEmailErr(true);
+      hasError = true;
+    }
+    if (!loginPass || loginPass.length < 8) {
+      setLoginPassErr(true);
+      hasError = true;
+    }
+    if (hasError) return;
 
     setLoginLoading(true);
     try {
       const res = await api.post('/auth/login', {
-        email: loginEmail,
+        email: loginEmail.trim(),
         password: loginPass,
         role: loginRole
       });
@@ -303,14 +325,50 @@ export default function Login() {
   };
 
   const handleRegister = async () => {
-    // no validation at all
     setRegEmailErr(false);
     setRegPassErr(false);
+    setRegConfirmErr(false);
+    setRegFirstErr('');
+    setRegLastErr('');
 
-    if (regPass !== regConfirmPass) {
-      setRegPassErr(true);
-      return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const nameRegex = /^[A-Za-z\s'\-]{2,50}$/;
+    let hasError = false;
+
+    if (!regFirst.trim() || !nameRegex.test(regFirst.trim())) {
+      setRegFirstErr(
+        !regFirst.trim() ? 'First name is required' :
+        regFirst.trim().length < 2 ? 'First name must be at least 2 characters' :
+        'First name may only contain letters, spaces, hyphens or apostrophes'
+      );
+      hasError = true;
     }
+    if (!regLast.trim() || !nameRegex.test(regLast.trim())) {
+      setRegLastErr(
+        !regLast.trim() ? 'Last name is required' :
+        regLast.trim().length < 2 ? 'Last name must be at least 2 characters' :
+        'Last name may only contain letters, spaces, hyphens or apostrophes'
+      );
+      hasError = true;
+    }
+    if (!regEmail.trim() || !emailRegex.test(regEmail.trim())) {
+      setRegEmailErr(true);
+      hasError = true;
+    }
+    if (!regPass || regPass.length < 8) {
+      setRegPassErr(true);
+      hasError = true;
+    }
+    if (regPass && regConfirmPass && regPass !== regConfirmPass) {
+      setRegConfirmErr(true);
+      hasError = true;
+    }
+    if (regYear && (isNaN(Number(regYear)) || Number(regYear) < 1 || Number(regYear) > 6 || !Number.isInteger(Number(regYear)))) {
+      setOverlay({ show: true, title: 'Invalid Year', msg: 'Year of study must be a whole number between 1 and 6.' });
+      setTimeout(() => setOverlay({ show: false, title: '', msg: '' }), 2500);
+      hasError = true;
+    }
+    if (hasError) return;
 
     if (regRole === 'tutor' && regFaceDescriptor.length === 0) {
       setOverlay({ show: true, title: 'Face ID required', msg: 'Please add your Face ID to register as a tutor.' });
@@ -321,19 +379,20 @@ export default function Login() {
     setRegLoading(true);
     try {
       await api.post('/auth/register', {
-        firstName: regFirst,
-        lastName: regLast,
-        name: `${regFirst} ${regLast}`.trim(),
-        email: regEmail,
+        firstName: regFirst.trim(),
+        lastName: regLast.trim(),
+        name: `${regFirst.trim()} ${regLast.trim()}`,
+        email: regEmail.trim(),
         password: regPass,
         faceDescriptor: regFaceDescriptor,
         role: regRole,
-        university: regUni,
-        degreeProgram: regDegree,
+        university: regUni.trim(),
+        degreeProgram: regDegree.trim(),
         year: regYear ? Number(regYear) : undefined
       });
-      setOverlay({ show: true, title: 'Account created!', msg: 'Setting up your profile…' });
+      setOverlay({ show: true, title: 'Account created!', msg: 'Redirecting to login…' });
       setTimeout(() => {
+        setOverlay({ show: false, title: '', msg: '' });
         setIsLogin(true);
       }, 2000);
     } catch (err) {
@@ -464,12 +523,12 @@ export default function Login() {
                   placeholder="you@example.com"
                   autoComplete="email"
                   value={loginEmail}
-                  onChange={e => setLoginEmail(e.target.value)}
+                  onChange={e => { setLoginEmail(e.target.value); if (loginEmailErr) setLoginEmailErr(false); }}
                   className={loginEmailErr ? 'err' : ''}
                 />
               </div>
               <div className={`field-error ${loginEmailErr ? 'show' : ''}`} id="loginEmailErr">
-                Please enter your email
+                Please enter a valid email address
               </div>
             </div>
             <div className="field">
@@ -483,7 +542,7 @@ export default function Login() {
                   placeholder="••••••••"
                   autoComplete="current-password"
                   value={loginPass}
-                  onChange={e => setLoginPass(e.target.value)}
+                  onChange={e => { setLoginPass(e.target.value); if (loginPassErr) setLoginPassErr(false); }}
                 />
                 <button
                   className="input-toggle"
@@ -536,15 +595,17 @@ export default function Login() {
                 <label>First Name</label>
                 <div className="input-wrap">
                   <span className="input-icon">👤</span>
-                  <input type="text" id="regFirst" placeholder="Alex" value={regFirst} onChange={e => setRegFirst(e.target.value)} />
+                  <input type="text" id="regFirst" placeholder="Alex" value={regFirst} onChange={e => { setRegFirst(e.target.value); if (regFirstErr) setRegFirstErr(''); }} className={regFirstErr ? 'err' : ''} />
                 </div>
+                <div className={`field-error ${regFirstErr ? 'show' : ''}`}>{regFirstErr}</div>
               </div>
               <div className="field">
                 <label>Last Name</label>
                 <div className="input-wrap">
                   <span className="input-icon" style={{left:'.7rem'}}>👤</span>
-                  <input type="text" id="regLast" placeholder="Jordan" value={regLast} onChange={e => setRegLast(e.target.value)} />
+                  <input type="text" id="regLast" placeholder="Jordan" value={regLast} onChange={e => { setRegLast(e.target.value); if (regLastErr) setRegLastErr(''); }} className={regLastErr ? 'err' : ''} />
                 </div>
+                <div className={`field-error ${regLastErr ? 'show' : ''}`}>{regLastErr}</div>
               </div>
             </div>
             <div className="field">
@@ -556,12 +617,12 @@ export default function Login() {
                   id="regEmail"
                   placeholder="you@example.com"
                   value={regEmail}
-                  onChange={e => setRegEmail(e.target.value)}
+                  onChange={e => { setRegEmail(e.target.value); if (regEmailErr) setRegEmailErr(false); }}
                   className={regEmailErr ? 'err' : ''}
                 />
               </div>
               <div className={`field-error ${regEmailErr ? 'show' : ''}`} id="regEmailErr">
-                Please enter your email
+                Please enter a valid email address
               </div>
             </div>
             <div className="field">
@@ -574,7 +635,7 @@ export default function Login() {
                   className={`has-toggle ${regPassErr ? 'err' : ''}`}
                   placeholder="Min 8 characters"
                   value={regPass}
-                  onChange={e => setRegPass(e.target.value)}
+                  onChange={e => { setRegPass(e.target.value); if (regPassErr) setRegPassErr(false); }}
                 />
                 <button className="input-toggle" onClick={() => togglePwd('regPass')} tabIndex="-1">👁</button>
               </div>
@@ -606,12 +667,15 @@ export default function Login() {
                 <input
                   type="password"
                   id="regConfirmPass"
-                  className={`has-toggle ${regPassErr ? 'err' : ''}`}
+                  className={`has-toggle ${regConfirmErr ? 'err' : ''}`}
                   placeholder="Re-enter password"
                   value={regConfirmPass}
-                  onChange={e => setRegConfirmPass(e.target.value)}
+                  onChange={e => { setRegConfirmPass(e.target.value); if (regConfirmErr) setRegConfirmErr(false); }}
                 />
                 <button className="input-toggle" onClick={() => togglePwd('regConfirmPass')} tabIndex="-1">👁</button>
+              </div>
+              <div className={`field-error ${regConfirmErr ? 'show' : ''}`}>
+                Passwords do not match
               </div>
             </div>
             <div className="field" style={{marginBottom:'1.4rem'}}>
@@ -634,7 +698,7 @@ export default function Login() {
                   <label>Year <span className="opt">(optional)</span></label>
                   <div className="input-wrap">
                     <span className="input-icon">🎓</span>
-                    <input type="number" id="regYear" placeholder="1" value={regYear} onChange={e => setRegYear(e.target.value)} />
+                <input type="number" id="regYear" placeholder="1" min="1" max="6" step="1" value={regYear} onChange={e => setRegYear(e.target.value)} />
                   </div>
                 </div>
               </div>
