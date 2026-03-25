@@ -81,6 +81,54 @@ export default function TutorDashboard() {
   };
 
   const handleSave = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const nameRegex = /^[A-Za-z\s'\-]{2,50}$/;
+    const phoneRegex = /^[+]?[\d\s\-(). ]{7,20}$/;
+
+    if (!profile.firstName.trim() || !nameRegex.test(profile.firstName.trim())) {
+      showStatus('First name must be 2–50 characters and contain only letters, spaces, hyphens or apostrophes', true);
+      return;
+    }
+    if (!profile.lastName.trim() || !nameRegex.test(profile.lastName.trim())) {
+      showStatus('Last name must be 2–50 characters and contain only letters, spaces, hyphens or apostrophes', true);
+      return;
+    }
+    if (!profile.personalEmail.trim() || !emailRegex.test(profile.personalEmail.trim())) {
+      showStatus('Please enter a valid email address', true);
+      return;
+    }
+    if (profile.phoneNumber && !phoneRegex.test(profile.phoneNumber.trim())) {
+      showStatus('Please enter a valid phone number (7–20 digits)', true);
+      return;
+    }
+    const yearsExp = Number(profile.yearsOfExperience);
+    if (isNaN(yearsExp) || yearsExp < 0 || yearsExp > 60 || !Number.isInteger(yearsExp)) {
+      showStatus('Years of experience must be a whole number between 0 and 60', true);
+      return;
+    }
+    const rating = Number(profile.averageRating);
+    if (isNaN(rating) || rating < 0 || rating > 5) {
+      showStatus('Average rating must be between 0 and 5', true);
+      return;
+    }
+    if (!profile.isFree) {
+      const rate = Number(profile.hourlyRate);
+      if (isNaN(rate) || rate < 0 || rate > 100000) {
+        showStatus('Hourly rate must be between LKR 0 and 100,000', true);
+        return;
+      }
+    }
+    if (profile.dateOfBirth) {
+      const dob = new Date(profile.dateOfBirth);
+      const today = new Date();
+      const age = today.getFullYear() - dob.getFullYear() -
+        (today < new Date(today.getFullYear(), dob.getMonth(), dob.getDate()) ? 1 : 0);
+      if (isNaN(dob.getTime()) || age < 18 || age > 90) {
+        showStatus('Date of birth must correspond to an age between 18 and 90 years', true);
+        return;
+      }
+    }
+
     try {
       setSaving(true);
       const subjects = subjectText

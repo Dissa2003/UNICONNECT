@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import '../styles/HomePage.css';
 import api from '../services/api';
+import { useTheme } from '../ThemeContext';
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -10,6 +11,7 @@ export default function Navbar() {
   const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem('token'));
   const [availableRoles, setAvailableRoles] = useState([]);
   const [switchingRole, setSwitchingRole] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   const getRoleFromToken = () => {
     try {
@@ -113,12 +115,20 @@ export default function Navbar() {
       </div>
       <ul className="nav-links">
         <li><Link to="/" className={location.pathname === '/' ? 'active' : ''}>Home</Link></li>
-        <li><Link to="#wellness">Wellness</Link></li>
+        <li><Link to="/student?section=wellness" className={location.pathname === '/student' && currentStudentSection === 'wellness' ? 'active' : ''}>Wellness</Link></li>
         <li><Link to="/student?section=bookTutor" className={location.pathname === '/student' && currentStudentSection === 'bookTutor' ? 'active' : ''}>Book a Tutor</Link></li>
         <li><Link to="/student?section=matching" className={location.pathname === '/student' && currentStudentSection === 'matching' ? 'active' : ''}>Need a Group</Link></li>
         <li><Link to="/study-room" className={location.pathname === '/study-room' ? 'active' : ''}>Study Room</Link></li>
       </ul>
       <div className="nav-actions">
+        <button
+          className="nav-theme-toggle"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label="Toggle theme"
+        >
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
         {loggedIn ? (
           <>
             {availableRoles.length > 1 && (

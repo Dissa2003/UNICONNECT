@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import api from '../services/api';
+import { useTheme } from '../ThemeContext';
 
 const SOCKET_URL = 'http://localhost:5000';
 
@@ -21,7 +22,16 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [membersOpen, setMembersOpen] = useState(false);
   const isTutorTheme = theme === 'tutor';
-  const styles = isTutorTheme ? getTutorStyles(baseStyles) : baseStyles;
+  const { theme: globalTheme } = useTheme();
+  const isLight = isTutorTheme || globalTheme === 'light';
+  const styles = isLight ? getTutorStyles(baseStyles) : baseStyles;
+  const pal = {
+    otherBubbleBg:       isLight ? 'rgba(0,0,0,.06)'        : 'rgba(255,255,255,.06)',
+    otherBubbleBorder:   isLight ? 'rgba(0,0,0,.1)'          : 'rgba(255,255,255,.1)',
+    arrowColor:          isLight ? 'rgba(0,0,0,.3)'           : 'rgba(255,255,255,.3)',
+    groupInactiveBorder: isLight ? 'rgba(26,107,255,.12)'    : 'rgba(255,255,255,.08)',
+    noGroupText:         isLight ? '#5f6f9a'                  : 'rgba(255,255,255,.45)',
+  };
 
   // Reference Flow state
   const [refOpen, setRefOpen] = useState(false);
@@ -32,6 +42,13 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
   const [refUploading, setRefUploading] = useState(false);
   const refFileInputRef = useRef(null);
   const refEndRef = useRef(null);
+
+  // Sync body background with theme
+  useEffect(() => {
+    const prev = document.body.style.background;
+    document.body.style.background = isLight ? '#f0f4ff' : '#03121f';
+    return () => { document.body.style.background = prev; };
+  }, [isLight]);
 
   const socketRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -134,8 +151,8 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
     const cI = document.getElementById('cI');
     if (!cO || !cI) return;
     const move = (e) => {
-      cI.style.transform = `translate(${e.clientX - 4}px,${e.clientY - 4}px)`;
-      cO.style.transform = `translate(${e.clientX - 17}px,${e.clientY - 17}px)`;
+      cI.style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
+      cO.style.transform = `translate(${e.clientX}px,${e.clientY}px)`;
     };
     document.addEventListener('mousemove', move);
 
@@ -346,8 +363,8 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
             {isBot && <div style={styles.botAvatar}>🤖</div>}
             <div style={{
               ...styles.messageBubble,
-              background: isBot ? 'rgba(138,80,255,.12)' : isMe ? 'rgba(26,107,255,.18)' : 'rgba(255,255,255,.06)',
-              borderColor: isBot ? 'rgba(138,80,255,.3)' : isMe ? 'rgba(26,107,255,.3)' : 'rgba(255,255,255,.1)',
+              background: isBot ? 'rgba(138,80,255,.12)' : isMe ? 'rgba(26,107,255,.18)' : pal.otherBubbleBg,
+              borderColor: isBot ? 'rgba(138,80,255,.3)' : isMe ? 'rgba(26,107,255,.3)' : pal.otherBubbleBorder,
             }}>
               {isBot ? (
                 <div style={styles.botSenderName}>@bot</div>
@@ -414,7 +431,7 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
                 {refPdf ? `📄 ${refPdf.fileName}` : 'AI Chat & PDF Assistant'}
               </div>
             </div>
-            <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,.3)' }}>
+            <span style={{ fontSize: '0.7rem', color: pal.arrowColor }}>
               {refOpen ? '▲' : '▼'}
             </span>
           </button>
@@ -438,7 +455,7 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
                 style={{
                   ...styles.groupItem,
                   background: activeGroup === g._id ? 'rgba(26,107,255,.15)' : 'transparent',
-                  borderColor: activeGroup === g._id ? 'rgba(26,107,255,.35)' : 'rgba(255,255,255,.08)',
+                  borderColor: activeGroup === g._id ? 'rgba(26,107,255,.35)' : pal.groupInactiveBorder,
                 }}
               >
                 <div style={styles.groupIcon}>💬</div>
@@ -563,7 +580,7 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
           <div style={styles.noChatSelected}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💬</div>
             <h3 style={{ fontFamily: 'Syne', fontWeight: 700, marginBottom: '0.5rem' }}>Welcome to Study Room</h3>
-            <p style={{ color: 'rgba(255,255,255,.45)', maxWidth: 340 }}>
+            <p style={{ color: pal.noGroupText, maxWidth: 340 }}>
               Select a study group from the sidebar to start chatting, sharing notes, and collaborating with your peers.
             </p>
             <button type="button" onClick={() => setSidebarOpen(true)} style={styles.showSidebarBtn}>
@@ -788,9 +805,9 @@ const baseStyles = {
   },
   // Cursor
   cursorOuter: { position: 'fixed', top: 0, left: 0, pointerEvents: 'none', zIndex: 9999 },
-  curRing: { width: 34, height: 34, borderRadius: '50%', border: '1.5px solid rgba(26,107,255,.55)', transition: 'all .25s' },
+  curRing: { width: 34, height: 34, borderRadius: '50%', border: '1.5px solid rgba(26,107,255,.55)', transition: 'all .25s', transform: 'translate(-50%,-50%)' },
   cursorInner: { position: 'fixed', top: 0, left: 0, pointerEvents: 'none', zIndex: 9999 },
-  curDot: { width: 8, height: 8, borderRadius: '50%', background: '#1A6BFF' },
+  curDot: { width: 8, height: 8, borderRadius: '50%', background: '#1A6BFF', transform: 'translate(-50%,-50%)' },
 
   // Sidebar
   sidebar: {

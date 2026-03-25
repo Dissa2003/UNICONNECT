@@ -2,6 +2,12 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+
+// Apply stored theme before React renders to prevent flash
+(function () {
+  const t = localStorage.getItem('uc-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+})();
 import reportWebVitals from './reportWebVitals';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
