@@ -26,6 +26,7 @@ export default function StudentDashboard(){
   const [toast, setToast] = useState({show:false, msg:'', isError:false});
   const [currentSection, setCurrentSection] = useState('overview');
   const [avatarEmoji, setAvatarEmoji] = useState('🎓');
+  const [userAvatar, setUserAvatar] = useState('');
   const [matches, setMatches] = useState([]); // matching group data
   const [tutorQuery, setTutorQuery] = useState({
     subject: '',
@@ -49,6 +50,14 @@ export default function StudentDashboard(){
   const [faceDeleteOpen, setFaceDeleteOpen] = useState(false);
   const [faceDeleteBusy, setFaceDeleteBusy] = useState(false);
   const [faceDeleteError, setFaceDeleteError] = useState('');
+  // face enroll (Smart Login setup)
+  const [hasFaceId, setHasFaceId] = useState(null); // null = loading, true/false = known
+  const [faceEnrollOpen, setFaceEnrollOpen] = useState(false);
+  const [faceEnrollBusy, setFaceEnrollBusy] = useState(false);
+  const [faceEnrollError, setFaceEnrollError] = useState('');
+  const [faceEnrollInfo, setFaceEnrollInfo] = useState('');
+  const enrollVideoRef = useRef(null);
+  const enrollStreamRef = useRef(null);
   // defaults ≈ dataset means: anxiety=11,self_esteem=18,mh_history=0,depression=13,headache=3,bp=2,sleep=3,breathing=3,noise=3,living=3,safety=3,basic=3,academic=3,load=3,teacher=3,career=3,social=2,peer=3,extra=3,bullying=3
   const [wellnessAnswers, setWellnessAnswers] = useState([11, 18, 0, 13, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3]);
   const [stressResult, setStressResult] = useState(null);
@@ -70,9 +79,11 @@ export default function StudentDashboard(){
     };
   }, [theme]);
 
-  // Load profile on mount
+  // Load profile and face status on mount
   useEffect(() => {
     loadProfile();
+    loadFaceStatus();
+    api.get('/users/me').then(r => setUserAvatar(r.data.avatar || '')).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -138,6 +149,56 @@ export default function StudentDashboard(){
       console.log('No profile yet');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadFaceStatus = async () => {
+    try {
+      const res = await api.get('/auth/face-status');
+      setHasFaceId(res.data.enrolled);
+    } catch (err) {
+      setHasFaceId(false);
+    }
+  };
+
+  const openFaceEnroll = async () => {
+    setFaceEnrollError('');
+    setFaceEnrollInfo('Opening camera...');
+    setFaceEnrollOpen(true);
+  };
+
+  const closeFaceEnroll = () => {
+    if (enrollStreamRef.current) {
+      enrollStreamRef.current.getTracks().forEach(t => t.stop());
+      enrollStreamRef.current = null;
+    }
+    setFaceEnrollOpen(false);
+    setFaceEnrollBusy(false);
+    setFaceEnrollError('');
+    setFaceEnrollInfo('');
+  };
+
+  const enrollFace = async () => {
+    setFaceEnrollBusy(true);
+    setFaceEnrollError('');
+    try {
+      const faceapi = await ensureFaceModels();
+      const video = enrollVideoRef.current;
+      if (!video) throw new Error('Camera is not ready');
+      const detection = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      if (!detection) throw new Error('No face detected. Keep your face centered and try again.');
+      const descriptor = Array.from(detection.descriptor).map(v => Number(v.toFixed(8)));
+      await api.post('/auth/update-face', { faceDescriptor: descriptor });
+      setHasFaceId(true);
+      setFaceEnrollInfo('Face ID enrolled successfully! You can now use Smart Login.');
+      setTimeout(() => closeFaceEnroll(), 1800);
+    } catch (err) {
+      setFaceEnrollError(err?.response?.data?.message || err.message || 'Face scan failed');
+    } finally {
+      setFaceEnrollBusy(false);
     }
   };
 
@@ -382,6 +443,27 @@ export default function StudentDashboard(){
     }
   };
 
+  // Start enroll camera after modal mounts (avoids videoRef race condition)
+  useEffect(() => {
+    if (!faceEnrollOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        enrollStreamRef.current = stream;
+        if (enrollVideoRef.current) {
+          enrollVideoRef.current.srcObject = stream;
+          await enrollVideoRef.current.play();
+        }
+        setFaceEnrollInfo('Camera ready. Keep your face centered and click Scan Face.');
+      } catch (err) {
+        if (!cancelled) setFaceEnrollError('Could not access camera. Please allow camera permission.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [faceEnrollOpen]);
+
   const ensureFaceModels = async () => {
     if (modelsLoadedRef.current && faceApiRef.current) {
       return faceApiRef.current;
@@ -592,13 +674,12 @@ export default function StudentDashboard(){
         {/* SIDEBAR */}
         <aside style={{position:'sticky',top:0,height:'100%',overflowY:'auto',padding:'2rem 1.5rem',background:pal.sidebarBg,borderRight:`1px solid ${pal.sidebarBorder}`,backdropFilter:'blur(20px)',display:'flex',flexDirection:'column',gap:'0.3rem'}}>
           <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:'0.7rem',padding:'1.5rem 1rem',background:pal.cardBg,border:`1px solid ${pal.cardBorder}`,borderRadius:'16px',marginBottom:'1.2rem',textAlign:'center'}}>
-            <div style={{position:'relative',width:'80px',height:'80px',borderRadius:'50%',background:'linear-gradient(135deg,#1A6BFF,#00E5C3)',display:'grid',placeItems:'center',fontSize:'2rem',cursor:'pointer'}} onClick={() => {
-              const emojis = ['🎓','👨‍💻','👩‍💻','🧑‍🔬','📚','🚀','⭐','🔬'];
-              const idx = emojis.indexOf(avatarEmoji);
-              setAvatarEmoji(emojis[(idx + 1) % emojis.length]);
-            }}>
-              {avatarEmoji}
-              <div style={{position:'absolute',bottom:0,right:0,width:'24px',height:'24px',borderRadius:'50%',background:'#1A6BFF',border:`2px solid ${pal.avatarBorder}`,display:'grid',placeItems:'center',fontSize:'0.65rem'}}>✏</div>
+            <div style={{position:'relative',width:'80px',height:'80px',borderRadius:'50%',background:'linear-gradient(135deg,#1A6BFF,#00E5C3)',display:'grid',placeItems:'center',fontSize:'2rem',cursor:'pointer',overflow:'hidden'}} onClick={() => navigate('/profile')}>
+              {userAvatar
+                ? <img src={userAvatar} alt="avatar" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'50%'}} />
+                : <span>{avatarEmoji}</span>
+              }
+              <div style={{position:'absolute',bottom:0,right:0,width:'24px',height:'24px',borderRadius:'50%',background:'#1A6BFF',border:`2px solid ${pal.avatarBorder}`,display:'grid',placeItems:'center',fontSize:'0.65rem',zIndex:1}}>✏</div>
             </div>
             <div>
               <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'0.95rem',letterSpacing:'-0.02em',color:pal.text}}>{profile.displayName || profile.name || 'Student'}</div>
@@ -736,6 +817,28 @@ export default function StudentDashboard(){
           </div>
         </div>
       )}
+
+      {faceEnrollOpen && (
+        <div style={{position:'fixed',inset:0,background:'rgba(3,8,16,.78)',zIndex:1300,display:'grid',placeItems:'center',padding:'1rem'}} onClick={closeFaceEnroll}>
+          <div style={{width:'min(520px, 96vw)',background:isDk?'#0e1a33':'#f0f4ff',border:`1px solid ${pal.cardBorderHvy}`,borderRadius:'14px',padding:'1.2rem 1.3rem'}} onClick={e => e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.9rem'}}>
+              <div style={{fontFamily:'Syne',fontWeight:700,fontSize:'1rem',color:pal.text}}>
+                {hasFaceId ? 'Update Face ID' : 'Enroll Face ID'}
+              </div>
+              <button onClick={closeFaceEnroll} style={{background:'transparent',border:'none',color:pal.textMuted,cursor:'pointer',fontSize:'1.1rem'}}>✕</button>
+            </div>
+            <video ref={enrollVideoRef} autoPlay muted playsInline style={{width:'100%',maxHeight:'280px',borderRadius:'10px',background:'#02070f',border:'1px solid rgba(255,255,255,.12)',marginBottom:'0.8rem'}} />
+            {faceEnrollInfo && <div style={{fontSize:'0.82rem',color:'#9ff5e7',marginBottom:'0.6rem'}}>{faceEnrollInfo}</div>}
+            {faceEnrollError && <div style={{fontSize:'0.82rem',color:'#ff8aa2',marginBottom:'0.6rem'}}>{faceEnrollError}</div>}
+            <div style={{display:'flex',gap:'0.55rem'}}>
+              <button onClick={enrollFace} disabled={faceEnrollBusy} style={{padding:'0.55rem 0.95rem',borderRadius:'10px',border:'1px solid rgba(0,229,195,.35)',background:'rgba(0,229,195,.18)',color:'#9ff5e7',cursor:'pointer',fontWeight:700,fontSize:'0.85rem'}}>
+                {faceEnrollBusy ? 'Scanning...' : 'Scan Face'}
+              </button>
+              <button onClick={closeFaceEnroll} style={{padding:'0.55rem 0.85rem',borderRadius:'10px',border:`1px solid ${pal.cardBorder}`,background:'transparent',color:pal.textMuted,cursor:'pointer',fontSize:'0.85rem'}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 
@@ -768,6 +871,8 @@ export default function StudentDashboard(){
             <Field label="Productivity Time" value={profile.productivityTime || '—'} />
           </Card>
         </div>
+
+
       </div>
     );
   }
@@ -802,21 +907,68 @@ export default function StudentDashboard(){
 
   function renderSubjects() {
     const isEdit = editState.subj;
+    // subjects available for the dropdowns — only those already in the current list
+    const subjectOptions = (profile.subjects || []).filter(Boolean);
+
+    const SubjectDropdown = ({ fieldName, colorClass, placeholder }) => {
+      const current = profile[fieldName] || [];
+      // available = subjects not yet added to this list
+      const available = subjectOptions.filter(s => !current.includes(s));
+      if (!isEdit) return null;
+      return (
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+          <select
+            defaultValue=""
+            style={{
+              flex: 1,
+              padding: '0.6rem 0.85rem',
+              background: 'var(--sd-input-bg)',
+              border: '1.5px solid var(--sd-input-border)',
+              borderRadius: '9px',
+              color: available.length ? 'var(--sd-text)' : 'var(--sd-faint)',
+              fontFamily: 'DM Sans',
+              fontSize: '0.87rem',
+              outline: 'none',
+              cursor: available.length ? 'pointer' : 'not-allowed',
+            }}
+            onChange={e => {
+              const val = e.target.value;
+              if (val) addTag(fieldName, val);
+              e.target.value = '';
+            }}
+          >
+            <option value="" disabled>
+              {available.length ? placeholder : 'All subjects added'}
+            </option>
+            {available.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      );
+    };
+
     return (
       <Section title="Subjects & Skills" subtitle="What you study and what you're good at" onEdit={() => toggleEdit('subj')} isEdit={isEdit}>
         <Card title="📘 Current Subjects">
           <TagList items={profile.subjects} onRemove={(i) => removeTag('subjects', i)} />
-          {isEdit && <TagInput onAdd={(val) => {addTag('subjects', val);}} />}
+          {isEdit && <TagInput onAdd={(val) => { addTag('subjects', val); }} />}
         </Card>
 
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem'}}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <Card title="💪 Strong Subjects">
             <TagList items={profile.strongSubjects} colorClass="green" onRemove={(i) => removeTag('strongSubjects', i)} />
-            {isEdit && <TagInput onAdd={(val) => addTag('strongSubjects', val)} />}
+            {subjectOptions.length > 0
+              ? <SubjectDropdown fieldName="strongSubjects" colorClass="green" placeholder="Select a strong subject…" />
+              : isEdit && <div style={{ fontSize: '0.78rem', color: 'var(--sd-faint)', marginTop: '0.5rem' }}>Add current subjects first</div>
+            }
           </Card>
           <Card title="⚠️ Weak Subjects">
             <TagList items={profile.weakSubjects} colorClass="rose" onRemove={(i) => removeTag('weakSubjects', i)} />
-            {isEdit && <TagInput onAdd={(val) => addTag('weakSubjects', val)} />}
+            {subjectOptions.length > 0
+              ? <SubjectDropdown fieldName="weakSubjects" colorClass="rose" placeholder="Select a weak subject…" />
+              : isEdit && <div style={{ fontSize: '0.78rem', color: 'var(--sd-faint)', marginTop: '0.5rem' }}>Add current subjects first</div>
+            }
           </Card>
         </div>
 
@@ -1127,7 +1279,7 @@ export default function StudentDashboard(){
                   </div>
                   <button
                     onClick={() => toggleMatchSelection(matchId)}
-                    style={{padding:'0.4rem 0.8rem',borderRadius:'8px',background:selected?'#00E5C3':'rgba(255,255,255,.08)',border:'1px solid rgba(255,255,255,.15)',color:selected?'#000':'#fff',cursor:'pointer',fontSize:'0.8rem'}}
+                    style={{padding:'0.4rem 0.8rem',borderRadius:'8px',background:selected?'#00E5C3':isDk?'rgba(255,255,255,.08)':'rgba(0,0,0,.06)',border:isDk?'1px solid rgba(255,255,255,.15)':'1px solid rgba(0,0,0,.18)',color:selected?'#000':pal.text,cursor:'pointer',fontSize:'0.8rem'}}
                   >
                     {selected ? 'Selected' : 'Select'}
                   </button>

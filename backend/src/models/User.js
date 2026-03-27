@@ -56,7 +56,8 @@ const UserSchema = new mongoose.Schema({
 
   university: String,
   degreeProgram: String,
-  year: Number
+  year: Number,
+  avatar: { type: String, default: '' }
 });
 
 module.exports = mongoose.model("User", UserSchema);

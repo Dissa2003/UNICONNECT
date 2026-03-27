@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import '../styles/Login.css';
+import { useTheme } from '../ThemeContext';
 
 const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
@@ -17,9 +18,9 @@ export default function Login() {
   const [loginPass, setLoginPass] = useState('');
   const [loginRole, setLoginRole] = useState('student');
   const [remember, setRemember] = useState(false);
-  const [loginEmailErr, setLoginEmailErr] = useState(false);
-  const [loginPassErr, setLoginPassErr] = useState(false);
+  const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   // register form
   const [regFirst, setRegFirst] = useState('');
@@ -127,8 +128,7 @@ export default function Login() {
   const switchTab = login => {
     setIsLogin(login);
     setOverlay({show: false, title: '', msg: ''});
-    setLoginEmailErr(false);
-    setLoginPassErr(false);
+    setLoginError('');
     setRegEmailErr(false);
     setRegPassErr(false);
     setRegFirstErr('');
@@ -199,26 +199,48 @@ export default function Login() {
     return faceapi;
   };
 
-  const openFaceScanner = async mode => {
+  const openFaceScanner = mode => {
     setFaceMode(mode);
     setFaceError('');
     setFaceInfo('Opening camera...');
     setFaceModalOpen(true);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
-      setFaceInfo('Camera ready. Keep your face centered and click Scan Face.');
-    } catch (err) {
-      setFaceError('Could not access camera. Please allow camera permission.');
-    }
+    // camera is started in the useEffect below, after the modal has rendered
+    // and the <video> element is guaranteed to be in the DOM
   };
+
+  // Start/stop the camera stream whenever the face modal opens or closes.
+  // Using a useEffect ensures the <video> ref is already mounted before we
+  // call getUserMedia, eliminating the race condition that caused a black/
+  // blank preview and subsequent "No face detected" errors.
+  useEffect(() => {
+    if (!faceModalOpen) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+        if (cancelled) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        setFaceInfo('Camera ready. Keep your face centered and click Scan Face.');
+      } catch (err) {
+        if (!cancelled) {
+          setFaceError('Could not access camera. Please allow camera permission.');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [faceModalOpen]);
 
   const closeFaceScanner = () => {
     stopCamera();
@@ -286,21 +308,14 @@ export default function Login() {
   };
 
   const handleLogin = async () => {
-    setLoginEmailErr(false);
-    setLoginPassErr(false);
+    setLoginError('');
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    let hasError = false;
 
-    if (!loginEmail.trim() || !emailRegex.test(loginEmail.trim())) {
-      setLoginEmailErr(true);
-      hasError = true;
+    if (!loginEmail.trim() || !emailRegex.test(loginEmail.trim()) || !loginPass || loginPass.length < 8) {
+      setLoginError('Email or password is wrong.');
+      return;
     }
-    if (!loginPass || loginPass.length < 8) {
-      setLoginPassErr(true);
-      hasError = true;
-    }
-    if (hasError) return;
 
     setLoginLoading(true);
     try {
@@ -318,7 +333,7 @@ export default function Login() {
         navigate(getDashboardRoute(role));
       }, 1500);
     } catch (err) {
-      // display server error if desired
+      setLoginError('Email or password is wrong.');
     } finally {
       setLoginLoading(false);
     }
@@ -406,6 +421,14 @@ export default function Login() {
 
   return (
     <div className="layout">
+      <button
+        className="login-theme-toggle"
+        onClick={toggleTheme}
+        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        aria-label="Toggle theme"
+      >
+        {theme === 'dark' ? '☀️' : '🌙'}
+      </button>
       <div className="left">
         <div className="left-bg"></div>
         <div className="logo">
@@ -523,12 +546,8 @@ export default function Login() {
                   placeholder="you@example.com"
                   autoComplete="email"
                   value={loginEmail}
-                  onChange={e => { setLoginEmail(e.target.value); if (loginEmailErr) setLoginEmailErr(false); }}
-                  className={loginEmailErr ? 'err' : ''}
+                  onChange={e => { setLoginEmail(e.target.value); if (loginError) setLoginError(''); }}
                 />
-              </div>
-              <div className={`field-error ${loginEmailErr ? 'show' : ''}`} id="loginEmailErr">
-                Please enter a valid email address
               </div>
             </div>
             <div className="field">
@@ -538,20 +557,17 @@ export default function Login() {
                 <input
                   type="password"
                   id="loginPass"
-                  className={`has-toggle ${loginPassErr ? 'err' : ''}`}
+                  className="has-toggle"
                   placeholder="••••••••"
                   autoComplete="current-password"
                   value={loginPass}
-                  onChange={e => { setLoginPass(e.target.value); if (loginPassErr) setLoginPassErr(false); }}
+                  onChange={e => { setLoginPass(e.target.value); if (loginError) setLoginError(''); }}
                 />
                 <button
                   className="input-toggle"
                   onClick={() => togglePwd('loginPass')}
                   tabIndex="-1"
                 >👁</button>
-              </div>
-              <div className={`field-error ${loginPassErr ? 'show' : ''}`} id="loginPassErr">
-                Password must be at least 8 characters
               </div>
             </div>
             <div className="row">
@@ -561,6 +577,9 @@ export default function Login() {
               </div>
               <a href="/forgot-password" className="forgot">Forgot password?</a>
             </div>
+            {loginError && (
+              <div className="login-error-msg">{loginError}</div>
+            )}
             <button className={`btn-submit ${loginLoading ? 'loading' : ''}`} id="loginBtn" onClick={handleLogin}>
               <span className="btn-text">Sign In to UniConnect</span>
               <div className="spinner"></div>
@@ -698,7 +717,15 @@ export default function Login() {
                   <label>Year <span className="opt">(optional)</span></label>
                   <div className="input-wrap">
                     <span className="input-icon">🎓</span>
-                <input type="number" id="regYear" placeholder="1" min="1" max="6" step="1" value={regYear} onChange={e => setRegYear(e.target.value)} />
+                    <select id="regYear" value={regYear} onChange={e => setRegYear(e.target.value)} style={{paddingLeft:'2.6rem'}}>
+                      <option value="">Select year</option>
+                      <option value="1">Year 1</option>
+                      <option value="2">Year 2</option>
+                      <option value="3">Year 3</option>
+                      <option value="4">Year 4</option>
+                      <option value="5">Year 5</option>
+                      <option value="6">Year 6</option>
+                    </select>
                   </div>
                 </div>
               </div>
