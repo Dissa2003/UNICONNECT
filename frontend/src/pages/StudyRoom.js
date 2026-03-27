@@ -789,6 +789,18 @@ function getTutorStyles(base) {
       border: '1px solid rgba(26,107,255,.15)',
       color: '#0d1b3e',
     },
+    refEmptyState: {
+      ...base.refEmptyState,
+      color: '#5f6f9a',
+    },
+    refHeaderSub: {
+      ...base.refHeaderSub,
+      color: '#5f6f9a',
+    },
+    refFlowSub: {
+      ...base.refFlowSub,
+      color: '#5f6f9a',
+    },
   };
 }
 
