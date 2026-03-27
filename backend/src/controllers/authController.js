@@ -399,3 +399,44 @@ exports.switchRole = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// GET /auth/face-status — returns whether the authenticated user has face ID enrolled
+exports.getFaceStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("faceAuth");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const enrolled = Boolean(user.faceAuth && user.faceAuth.enabled && user.faceAuth.descriptor && user.faceAuth.descriptor.length > 0);
+    res.json({ enrolled });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// POST /auth/update-face — enroll or replace face descriptor for the authenticated user
+exports.updateFace = async (req, res) => {
+  try {
+    const descriptor = sanitizeFaceDescriptor(req.body.faceDescriptor);
+    if (descriptor.length === 0) {
+      return res.status(400).json({ message: "A valid face descriptor is required" });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.faceAuth = {
+      enabled: true,
+      descriptor,
+      descriptorLength: descriptor.length,
+      updatedAt: new Date()
+    };
+    await user.save();
+
+    res.json({ message: "Face ID enrolled successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
