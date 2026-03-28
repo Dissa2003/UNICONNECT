@@ -116,12 +116,13 @@ export default function Login() {
     }
   }, []);
 
-  // if already logged in, send to role-specific dashboard
+  // Clear any previous session when the login page loads —
+  // prevents a stale token from silently redirecting a different user.
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    navigate(getDashboardRoute(getRoleFromToken(token)));
-  }, [navigate]);
+    localStorage.removeItem('token');
+    localStorage.removeItem('availableRoles');
+    window.dispatchEvent(new Event('auth-changed'));
+  }, []);
 
 
 
@@ -285,6 +286,10 @@ export default function Login() {
         if (loginEmail.trim()) {
           payload.email = loginEmail.trim();
         }
+
+        // Clear any stale session before attempting face login
+        localStorage.removeItem('token');
+        localStorage.removeItem('availableRoles');
 
         const res = await api.post('/auth/face-login', {
           ...payload
