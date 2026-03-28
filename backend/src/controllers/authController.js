@@ -88,27 +88,16 @@ async function ensureProfileForRole(user, role, details) {
   }
 }
 
-function cosineSimilarity(a, b) {
+function euclideanDistance(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length === 0 || b.length === 0 || a.length !== b.length) {
-    return 0;
+    return Infinity;
   }
-
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-
+  let sum = 0;
   for (let i = 0; i < a.length; i += 1) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
+    const diff = a[i] - b[i];
+    sum += diff * diff;
   }
-
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  if (!denom) {
-    return 0;
-  }
-
-  return dot / denom;
+  return Math.sqrt(sum);
 }
 
 // REGISTER
@@ -260,7 +249,9 @@ exports.faceLogin = async (req, res) => {
   try {
     const { email, faceDescriptor, role } = req.body;
     const selectedRole = normalizeRole(role) || null;
-    const threshold = Number(process.env.FACE_LOGIN_THRESHOLD || 0.88);
+    // Euclidean distance threshold: face-api.js descriptors use L2 distance.
+    // Values below 0.5 are the same person; above 0.5 are different people (strict).
+    const threshold = Number(process.env.FACE_LOGIN_THRESHOLD || 0.5);
 
     const incomingDescriptor = sanitizeFaceDescriptor(faceDescriptor);
     if (incomingDescriptor.length === 0) {
@@ -268,7 +259,8 @@ exports.faceLogin = async (req, res) => {
     }
 
     let matchedUser = null;
-    let score = 0;
+    let bestDistance = Infinity;
+    let secondBestDistance = Infinity;
 
     if (email) {
       const user = await User.findOne({ email });
@@ -287,7 +279,7 @@ exports.faceLogin = async (req, res) => {
       }
 
       matchedUser = user;
-      score = cosineSimilarity(incomingDescriptor, user.faceAuth.descriptor);
+      bestDistance = euclideanDistance(incomingDescriptor, user.faceAuth.descriptor);
     } else {
       const candidates = await User.find({
         "faceAuth.enabled": true,
@@ -303,10 +295,13 @@ exports.faceLogin = async (req, res) => {
           return;
         }
 
-        const candidateScore = cosineSimilarity(incomingDescriptor, candidate.faceAuth.descriptor || []);
-        if (candidateScore > score) {
-          score = candidateScore;
+        const dist = euclideanDistance(incomingDescriptor, candidate.faceAuth.descriptor || []);
+        if (dist < bestDistance) {
+          secondBestDistance = bestDistance;
+          bestDistance = dist;
           matchedUser = candidate;
+        } else if (dist < secondBestDistance) {
+          secondBestDistance = dist;
         }
       });
     }
@@ -315,11 +310,22 @@ exports.faceLogin = async (req, res) => {
       return res.status(400).json({ message: "Face verification failed" });
     }
 
-    if (score < threshold) {
+    if (bestDistance > threshold) {
       return res.status(400).json({
-        message: "Face verification failed",
-        confidence: Number(score.toFixed(4))
+        message: "Face not recognised. Please try again or log in with email.",
+        distance: Number(bestDistance.toFixed(4))
       });
+    }
+
+    // Gap check (face-only mode): best match must be clearly better than second-best.
+    // If the gap is too small the face is ambiguous — reject to prevent wrong login.
+    if (!email && secondBestDistance !== Infinity) {
+      const gap = secondBestDistance - bestDistance;
+      if (gap < 0.1) {
+        return res.status(400).json({
+          message: "Face not recognised. Please try again or log in with email."
+        });
+      }
     }
 
     const availableRoles = getUserRoles(matchedUser);
@@ -343,7 +349,7 @@ exports.faceLogin = async (req, res) => {
       role: activeRole,
       availableRoles,
       email: matchedUser.email,
-      confidence: Number(score.toFixed(4))
+      distance: Number(bestDistance.toFixed(4))
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
