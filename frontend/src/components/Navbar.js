@@ -109,7 +109,7 @@ export default function Navbar() {
         UniConnect
       </div>
       <ul className="nav-links">
-        <li><Link to={loggedIn ? (getRoleFromToken() === 'admin' ? '/admin' : getRoleFromToken() === 'tutor' ? '/tutor' : '/student') : '/'} className={(location.pathname === '/' || location.pathname === '/student' || location.pathname === '/tutor' || location.pathname === '/admin') && !new URLSearchParams(location.search).get('section') ? 'active' : ''}>Home</Link></li>
+        <li><Link to={loggedIn ? (getRoleFromToken() === 'admin' ? '/admin' : getRoleFromToken() === 'tutor' ? '/tutor' : '/student?section=overview') : '/'} className={(location.pathname === '/' || location.pathname === '/student' || location.pathname === '/tutor' || location.pathname === '/admin') && !new URLSearchParams(location.search).get('section') || (location.pathname === '/student' && currentStudentSection === 'overview') ? 'active' : ''}>Home</Link></li>
         <li><Link to="/student?section=wellness" className={location.pathname === '/student' && currentStudentSection === 'wellness' ? 'active' : ''}>Wellness</Link></li>
         <li><Link to="/student?section=bookTutor" className={location.pathname === '/student' && currentStudentSection === 'bookTutor' ? 'active' : ''}>Book a Tutor</Link></li>
         <li><Link to="/student?section=matching" className={location.pathname === '/student' && currentStudentSection === 'matching' ? 'active' : ''}>Need a Group</Link></li>

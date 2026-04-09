@@ -5,6 +5,9 @@ import { useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { useTheme } from '../ThemeContext';
+import BreathingExercise from '../components/BreathingExercise';
+import MeditationTimer from '../components/MeditationTimer';
+import StressHistoryChart from '../components/StressHistoryChart';
 
 const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
@@ -12,7 +15,7 @@ const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-
 export default function StudentDashboard(){
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { theme, toggleTheme } = useTheme();
+  const { theme } = useTheme();
   const [profile, setProfile] = useState({
     university:'', degreeProgram:'', year:'', personalityType:'',
     subjects:[], weakSubjects:[], strongSubjects:[], skills:[],
@@ -62,6 +65,13 @@ export default function StudentDashboard(){
   const [wellnessAnswers, setWellnessAnswers] = useState([11, 18, 0, 13, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3]);
   const [stressResult, setStressResult] = useState(null);
   const [stressLoading, setStressLoading] = useState(false);
+  const [activeRelaxTool, setActiveRelaxTool] = useState(null); // null | 'breathing' | 'meditation'
+  const [stressHistory, setStressHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [wellnessTab, setWellnessTab] = useState('wellness'); // 'wellness' | 'relaxation' | 'history'
+  const [breathingView, setBreathingView] = useState('exercise');  // null | 'video' | 'exercise'
+  const [meditationView, setMeditationView] = useState(null); // null | 'video' | 'timer'
+  const [relaxView, setRelaxView] = useState('breathing-exercise'); // 'breathing-exercise'|'breathing-video'|'meditation-timer'|'meditation-video'
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const faceApiRef = useRef(null);
@@ -90,6 +100,16 @@ export default function StudentDashboard(){
     const sectionParam = searchParams.get('section');
     if (sectionParam) setCurrentSection(sectionParam);
   }, [searchParams]);
+
+  // Fetch stress history whenever the wellness section becomes active
+  useEffect(() => {
+    if (currentSection !== 'wellness') return;
+    setHistoryLoading(true);
+    api.get('/stress/history')
+      .then(r => setStressHistory(r.data.records || []))
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
+  }, [currentSection]);
 
   // when profile first arrives (has an _id) fetch only group request list
   const hasFetchedGroupRequestsRef = useRef(false);
@@ -1453,6 +1473,16 @@ export default function StudentDashboard(){
       try {
         const res = await api.post('/stress/predict', { answers: wellnessAnswers });
         setStressResult(res.data);
+        // Prepend new record to local history so graph updates instantly
+        if (res.data && res.data.stress_label) {
+          const today = new Date().toISOString().slice(0, 10);
+          const newRecord = {
+            date:  today,
+            score: res.data.score ?? 0,
+            level: res.data.stress_label,
+          };
+          setStressHistory(prev => [newRecord, ...prev]);
+        }
       } catch (err) {
         setStressResult({ error: err.response?.data?.error || err.response?.data?.message || 'Assessment failed. Please try again.' });
       } finally {
@@ -1472,6 +1502,40 @@ export default function StudentDashboard(){
 
     return (
       <div style={{animation:'fadeIn 0.4s ease-out'}}>
+
+        {/* ── Section header ── */}
+        <h2 style={{fontFamily:'Syne',fontSize:'1.6rem',fontWeight:800,letterSpacing:'-0.04em',background:'linear-gradient(120deg,#1A6BFF,#38BFFF)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text',marginBottom:'1.6rem'}}>
+          Wellness
+        </h2>
+
+        {/* ── Sub-nav tabs ── */}
+        <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap',marginBottom:'2rem',borderBottom:`1px solid ${pal.cardBorder}`,paddingBottom:'0'}}>
+          {[
+            { key:'wellness',   icon:'🩺', label:'Wellness Check' },
+            { key:'relaxation', icon:'🧘', label:'Relaxation Tools' },
+            { key:'history',    icon:'📊', label:'History' },
+          ].map(t => (
+            <button key={t.key} onClick={() => setWellnessTab(t.key)} style={{
+              display:'flex',alignItems:'center',gap:'0.45rem',
+              padding:'0.55rem 1.2rem',borderRadius:'10px 10px 0 0',
+              fontSize:'0.85rem',fontWeight:600,cursor:'pointer',border:'none',
+              transition:'all 0.2s',
+              background: wellnessTab === t.key ? (isDk ? 'rgba(26,107,255,.18)' : 'rgba(26,107,255,.1)') : 'transparent',
+              borderBottom: wellnessTab === t.key ? '2px solid #1A6BFF' : '2px solid transparent',
+              color: wellnessTab === t.key ? '#38BFFF' : pal.textMuted,
+            }}>
+              <span>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ══════════════════════════════════════
+            TAB: Wellness Check (questionnaire)
+        ══════════════════════════════════════ */}
+        {wellnessTab === 'wellness' && (<>
+          <p style={{color:pal.textMuted,fontSize:'0.88rem',marginBottom:'2rem'}}>
+            Answer honestly — this AI model estimates your stress level and recommends actions.
+          </p>
         <h2 style={{fontFamily:'Syne',fontSize:'1.6rem',fontWeight:800,letterSpacing:'-0.04em',background:'linear-gradient(120deg,#1A6BFF,#38BFFF)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text',marginBottom:'0.4rem'}}>
           Wellness Check
         </h2>
@@ -1557,24 +1621,100 @@ export default function StudentDashboard(){
         </button>
 
         {stressResult && !stressResult.error && (
-          <div style={{marginTop:'2rem',padding:'1.6rem',borderRadius:'16px',
-            background: levelBg[stressResult.stress_label],
-            border: `1px solid ${levelBorder[stressResult.stress_label]}`}}>
-            <div style={{display:'flex',alignItems:'center',gap:'1rem',marginBottom:'1.2rem'}}>
-              <span style={{fontSize:'2.4rem'}}>{levelEmoji[stressResult.stress_label]}</span>
-              <div>
-                <div style={{fontSize:'0.72rem',letterSpacing:'0.1em',textTransform:'uppercase',color:pal.textMuted,marginBottom:'0.2rem'}}>AI Assessment Result</div>
-                <div style={{fontFamily:'Syne',fontSize:'1.8rem',fontWeight:800,color: levelColor[stressResult.stress_label]}}>
-                  {stressResult.stress_label} Stress
+
+          /* ── Result Popup Modal ── */
+          <div
+            onClick={() => setStressResult(null)}
+            style={{
+              position:'fixed',inset:0,zIndex:9000,
+              display:'flex',alignItems:'center',justifyContent:'center',
+              background:'rgba(10,14,26,0.75)',backdropFilter:'blur(6px)',
+              padding:'1rem',
+              animation:'fadeIn 0.25s ease-out',
+            }}>
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                position:'relative',width:'100%',maxWidth:460,
+                background: isDk ? 'rgba(13,23,48,0.97)' : '#fff',
+                border:`1.5px solid ${levelBorder[stressResult.stress_label]}`,
+                borderRadius:20,padding:'2rem',
+                boxShadow:`0 24px 80px ${levelColor[stressResult.stress_label]}22`,
+                animation:'slideUp 0.3s cubic-bezier(.16,1,.3,1)',
+              }}>
+
+              {/* Close button */}
+              <button
+                onClick={() => setStressResult(null)}
+                style={{
+                  position:'absolute',top:'1rem',right:'1rem',
+                  width:32,height:32,borderRadius:'50%',
+                  background:pal.inputBg,border:`1px solid ${pal.cardBorder}`,
+                  color:pal.textMuted,fontSize:'1rem',lineHeight:1,
+                  cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',
+                }}>
+                ✕
+              </button>
+
+              {/* Header */}
+              <div style={{display:'flex',alignItems:'center',gap:'1rem',marginBottom:'1.4rem'}}>
+                <span style={{fontSize:'3rem',lineHeight:1}}>{levelEmoji[stressResult.stress_label]}</span>
+                <div>
+                  <div style={{fontSize:'0.7rem',letterSpacing:'0.12em',textTransform:'uppercase',color:pal.textMuted,marginBottom:'0.25rem'}}>AI Assessment Result</div>
+                  <div style={{fontFamily:'Syne',fontSize:'1.9rem',fontWeight:800,letterSpacing:'-0.03em',color:levelColor[stressResult.stress_label]}}>
+                    {stressResult.stress_label} Stress
+                  </div>
+                  {stressResult.score !== undefined && (
+                    <div style={{fontSize:'0.8rem',color:pal.textDim,marginTop:'0.15rem'}}>
+                      Score: <strong style={{color:levelColor[stressResult.stress_label]}}>{stressResult.score}/100</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Score bar */}
+              {stressResult.score !== undefined && (
+                <div style={{marginBottom:'1.4rem'}}>
+                  <div style={{height:8,borderRadius:4,background:pal.progressBg,overflow:'hidden'}}>
+                    <div style={{
+                      height:'100%',width:`${stressResult.score}%`,borderRadius:4,
+                      background:`linear-gradient(90deg,${levelColor[stressResult.stress_label]},${levelColor[stressResult.stress_label]}88)`,
+                      transition:'width 0.8s ease',
+                    }}/>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:'0.65rem',color:pal.textDim,marginTop:'0.3rem'}}>
+                    <span>0 – Low</span><span>31 – Medium</span><span>71 – High</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Recommendations */}
+              <div style={{fontSize:'0.72rem',fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',color:pal.textMuted,marginBottom:'0.7rem'}}>Recommendations</div>
+              <ul style={{margin:'0 0 1.4rem',paddingLeft:'1.1rem'}}>
+                {levelRecs[stressResult.stress_label].map((rec, i) => (
+                  <li key={i} style={{color:pal.textSemi,fontSize:'0.86rem',marginBottom:'0.45rem',lineHeight:1.6}}>{rec}</li>
+                ))}
+              </ul>
+
+              {/* Quick-access relaxation tools */}
+              <div style={{paddingTop:'1rem',borderTop:`1px solid ${levelBorder[stressResult.stress_label]}`}}>
+                <div style={{fontSize:'0.7rem',fontWeight:700,letterSpacing:'0.1em',textTransform:'uppercase',color:pal.textMuted,marginBottom:'0.7rem'}}>Try a Relaxation Exercise</div>
+                <div style={{display:'flex',gap:'0.6rem',flexWrap:'wrap'}}>
+                  <button onClick={() => { setStressResult(null); setWellnessTab('relaxation'); setRelaxView('breathing-exercise'); window.scrollTo({top:0,behavior:'smooth'}); }}
+                    style={{flex:'1 1 auto',padding:'0.6rem 1rem',borderRadius:'9px',fontSize:'0.83rem',fontWeight:700,cursor:'pointer',border:'none',
+                      background:'linear-gradient(135deg,#1A6BFF,#38BFFF)',color:'#fff',
+                      boxShadow:'0 4px 14px rgba(26,107,255,.3)'}}>
+                    🌬️ Breathing Exercise
+                  </button>
+                  <button onClick={() => { setStressResult(null); setWellnessTab('relaxation'); setRelaxView('meditation-timer'); window.scrollTo({top:0,behavior:'smooth'}); }}
+                    style={{flex:'1 1 auto',padding:'0.6rem 1rem',borderRadius:'9px',fontSize:'0.83rem',fontWeight:700,cursor:'pointer',border:'none',
+                      background:'linear-gradient(135deg,#00E5C3,#38BFFF)',color:'#fff',
+                      boxShadow:'0 4px 14px rgba(0,229,195,.25)'}}>
+                    ⏱ Meditation Timer
+                  </button>
                 </div>
               </div>
             </div>
-            <div style={{fontSize:'0.78rem',fontWeight:600,letterSpacing:'0.08em',textTransform:'uppercase',color:pal.textMuted,marginBottom:'0.7rem'}}>Recommendations</div>
-            <ul style={{margin:0,paddingLeft:'1.1rem'}}>
-              {levelRecs[stressResult.stress_label].map((rec, i) => (
-                <li key={i} style={{color:pal.textSemi,fontSize:'0.87rem',marginBottom:'0.4rem',lineHeight:1.5}}>{rec}</li>
-              ))}
-            </ul>
           </div>
         )}
 
@@ -1585,6 +1725,189 @@ export default function StudentDashboard(){
             ⚠ {stressResult.error}
           </div>
         )}
+        </>)}
+        {/* ── End Tab: Wellness ── */}
+
+        {/* ══════════════════════════════════════
+            TAB: Relaxation Tools
+        ══════════════════════════════════════ */}
+        {wellnessTab === 'relaxation' && (() => {
+          const isBr = relaxView.startsWith('breathing');
+          const contentBorder = isBr ? '1.5px solid #38BFFF44' : '1.5px solid #00E5C344';
+          const contentShadow = isBr ? '0 8px 32px rgba(56,191,255,.1)' : '0 8px 32px rgba(0,229,195,.1)';
+          return (
+          <div style={{animation:'fadeIn 0.3s ease-out'}}>
+
+            {/* ── Row: 2 selector cards ── */}
+            <div style={{display:'flex',gap:'1rem',flexWrap:'wrap',marginBottom:'1.2rem'}}>
+
+              {/* Selector: Breathing Exercise */}
+              <div style={{
+                flex:'1 1 220px',padding:'1.1rem 1.2rem',borderRadius:16,
+                border: relaxView.startsWith('breathing') ? '1.5px solid #38BFFF88' : `1.5px solid ${pal.cardBorder}`,
+                background: relaxView.startsWith('breathing')
+                  ? (isDk ? 'rgba(56,191,255,.07)' : 'rgba(56,191,255,.06)')
+                  : (isDk ? 'rgba(255,255,255,.03)' : 'rgba(255,255,255,.7)'),
+                boxShadow: relaxView.startsWith('breathing') ? '0 4px 20px rgba(56,191,255,.1)' : 'none',
+                transition:'all 0.25s',
+              }}>
+                {/* Icon + title */}
+                <div style={{display:'flex',alignItems:'center',gap:'0.65rem',marginBottom:'1rem'}}>
+                  <div style={{
+                    width:40,height:40,borderRadius:10,flexShrink:0,
+                    background:'linear-gradient(135deg,rgba(56,191,255,.2),rgba(26,107,255,.1))',
+                    border:'1.5px solid rgba(56,191,255,.35)',
+                    display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.2rem',
+                  }}>🌬️</div>
+                  <div>
+                    <div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:'0.93rem',color:pal.text}}>Breathing Exercise</div>
+                    <div style={{fontSize:'0.71rem',color:pal.textDim,marginTop:'0.1rem'}}>4 – 4 – 4 box breathing technique</div>
+                  </div>
+                </div>
+                {/* Buttons */}
+                <div style={{display:'flex',gap:'0.45rem',flexWrap:'wrap'}}>
+                  <button
+                    onClick={() => setRelaxView('breathing-video')}
+                    style={{
+                      flex:'1 1 auto',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.35rem',
+                      padding:'0.45rem 0.8rem',borderRadius:8,fontSize:'0.78rem',fontWeight:600,cursor:'pointer',transition:'all 0.2s',
+                      background: relaxView === 'breathing-video' ? 'rgba(56,191,255,.18)' : pal.inputBg,
+                      border: relaxView === 'breathing-video' ? '1.5px solid #38BFFF' : `1.5px solid ${pal.inputBorder}`,
+                      color: relaxView === 'breathing-video' ? '#38BFFF' : pal.textMuted,
+                    }}>
+                    📹 Video Guide
+                  </button>
+                  <button
+                    onClick={() => setRelaxView('breathing-exercise')}
+                    style={{
+                      flex:'1 1 auto',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.35rem',
+                      padding:'0.45rem 0.8rem',borderRadius:8,fontSize:'0.78rem',fontWeight:600,cursor:'pointer',transition:'all 0.2s',
+                      background: relaxView === 'breathing-exercise' ? 'rgba(56,191,255,.18)' : pal.inputBg,
+                      border: relaxView === 'breathing-exercise' ? '1.5px solid #38BFFF' : `1.5px solid ${pal.inputBorder}`,
+                      color: relaxView === 'breathing-exercise' ? '#38BFFF' : pal.textMuted,
+                    }}>
+                    🌬️ Start Exercise
+                  </button>
+                </div>
+              </div>
+
+              {/* Selector: Meditation Timer */}
+              <div style={{
+                flex:'1 1 220px',padding:'1.1rem 1.2rem',borderRadius:16,
+                border: relaxView.startsWith('meditation') ? '1.5px solid #00E5C388' : `1.5px solid ${pal.cardBorder}`,
+                background: relaxView.startsWith('meditation')
+                  ? (isDk ? 'rgba(0,229,195,.07)' : 'rgba(0,229,195,.05)')
+                  : (isDk ? 'rgba(255,255,255,.03)' : 'rgba(255,255,255,.7)'),
+                boxShadow: relaxView.startsWith('meditation') ? '0 4px 20px rgba(0,229,195,.1)' : 'none',
+                transition:'all 0.25s',
+              }}>
+                {/* Icon + title */}
+                <div style={{display:'flex',alignItems:'center',gap:'0.65rem',marginBottom:'1rem'}}>
+                  <div style={{
+                    width:40,height:40,borderRadius:10,flexShrink:0,
+                    background:'linear-gradient(135deg,rgba(0,229,195,.2),rgba(56,191,255,.1))',
+                    border:'1.5px solid rgba(0,229,195,.35)',
+                    display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.2rem',
+                  }}>⏱</div>
+                  <div>
+                    <div style={{fontFamily:'Syne,sans-serif',fontWeight:700,fontSize:'0.93rem',color:pal.text}}>Meditation Timer</div>
+                    <div style={{fontSize:'0.71rem',color:pal.textDim,marginTop:'0.1rem'}}>Timed guided meditation session</div>
+                  </div>
+                </div>
+                {/* Buttons */}
+                <div style={{display:'flex',gap:'0.45rem',flexWrap:'wrap'}}>
+                  <button
+                    onClick={() => setRelaxView('meditation-video')}
+                    style={{
+                      flex:'1 1 auto',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.35rem',
+                      padding:'0.45rem 0.8rem',borderRadius:8,fontSize:'0.78rem',fontWeight:600,cursor:'pointer',transition:'all 0.2s',
+                      background: relaxView === 'meditation-video' ? 'rgba(0,229,195,.18)' : pal.inputBg,
+                      border: relaxView === 'meditation-video' ? '1.5px solid #00E5C3' : `1.5px solid ${pal.inputBorder}`,
+                      color: relaxView === 'meditation-video' ? '#00E5C3' : pal.textMuted,
+                    }}>
+                    📹 Video Guide
+                  </button>
+                  <button
+                    onClick={() => setRelaxView('meditation-timer')}
+                    style={{
+                      flex:'1 1 auto',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.35rem',
+                      padding:'0.45rem 0.8rem',borderRadius:8,fontSize:'0.78rem',fontWeight:600,cursor:'pointer',transition:'all 0.2s',
+                      background: relaxView === 'meditation-timer' ? 'rgba(0,229,195,.18)' : pal.inputBg,
+                      border: relaxView === 'meditation-timer' ? '1.5px solid #00E5C3' : `1.5px solid ${pal.inputBorder}`,
+                      color: relaxView === 'meditation-timer' ? '#00E5C3' : pal.textMuted,
+                    }}>
+                    ⏱ Start Timer
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Single content card ── */}
+            <div key={relaxView} style={{
+              border: contentBorder,
+              borderRadius:18,overflow:'hidden',
+              background: isDk ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.9)',
+              boxShadow: contentShadow,
+              animation:'fadeIn 0.3s ease-out',
+              padding:'1.4rem 1.6rem',
+            }}>
+              {relaxView === 'breathing-exercise' && <BreathingExercise pal={pal} />}
+              {relaxView === 'breathing-video' && (
+                <div style={{position:'relative',paddingBottom:'56.25%',height:0,borderRadius:12,overflow:'hidden',background:'#000'}}>
+                  <iframe
+                    title="Breathing Exercise Guide"
+                    src="https://www.youtube.com/embed/tybOi4hjZFQ"
+                    style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',border:'none',borderRadius:12}}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              )}
+              {relaxView === 'meditation-timer' && <MeditationTimer pal={pal} />}
+              {relaxView === 'meditation-video' && (
+                <div style={{position:'relative',paddingBottom:'56.25%',height:0,borderRadius:12,overflow:'hidden',background:'#000'}}>
+                  <iframe
+                    title="Meditation Guide"
+                    src="https://www.youtube.com/embed/aIIEI33EUqI"
+                    style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',border:'none',borderRadius:12}}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+          );
+        })()}
+        {/* ── End Tab: Relaxation Tools ── */}
+
+        {/* ══════════════════════════════════════
+            TAB: History
+        ══════════════════════════════════════ */}
+        {wellnessTab === 'history' && (
+          <div style={{animation:'fadeIn 0.3s ease-out'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'0.5rem',marginBottom:'0.5rem'}}>
+              <p style={{color:pal.textMuted,fontSize:'0.88rem',lineHeight:1.6,margin:0}}>
+                Your stress level over time — line chart, history list, and level distribution.
+              </p>
+              {historyLoading && <span style={{fontSize:'0.75rem',color:pal.textDim}}>Loading…</span>}
+            </div>
+            <div style={{marginTop:'1.2rem'}}>
+              <StressHistoryChart
+                records={stressHistory}
+                pal={pal}
+                onClearHistory={async () => {
+                  try {
+                    await api.delete('/stress/history');
+                    setStressHistory([]);
+                  } catch (_) {}
+                }}
+              />
+            </div>
+          </div>
+        )}
+        {/* ── End Tab: History ── */}
+
       </div>
     );
   }
@@ -1736,6 +2059,7 @@ function getStyles(theme) {
     @keyframes d1 { to { transform: translate(40px, 60px); } }
     @keyframes d2 { to { transform: translate(-30px, -40px); } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(40px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
     .empty { color: var(--sd-muted) !important; font-style: italic; }
     input:focus, select:focus { border-color: var(--azure) !important; background: rgba(26,107,255,.06) !important; }
     select option { background: ${isDk ? '#0D1730' : '#f0f4ff'}; color: ${isDk ? 'white' : '#0d1b3e'}; }
