@@ -53,7 +53,7 @@ const StudyGroupSchema = new mongoose.Schema(
 );
 
 StudyGroupSchema.index({ "members.user": 1 });
-StudyGroupSchema.index({ groupRequest: 1 }, { unique: true, sparse: true });
-StudyGroupSchema.index({ tutorBooking: 1 }, { unique: true, sparse: true });
+StudyGroupSchema.index({ groupRequest: 1 }, { unique: true, partialFilterExpression: { groupRequest: { $type: "objectId" } } });
+StudyGroupSchema.index({ tutorBooking: 1 }, { unique: true, partialFilterExpression: { tutorBooking: { $type: "objectId" } } });
 
 module.exports = mongoose.model("StudyGroup", StudyGroupSchema);

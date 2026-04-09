@@ -113,7 +113,7 @@ export default function HomePage() {
             <span>Start a Demo</span>
             <span>→</span>
           </a>
-          <a href="/" className="btn-ghost">
+          <a href="/" className="btn-ghost" style={{ color: '#000' }}>
             <span>▶</span>
             <span>Watch Demo</span>
           </a>

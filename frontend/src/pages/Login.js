@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import '../styles/Login.css';
+import { useTheme } from '../ThemeContext';
 
 const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
@@ -17,9 +18,9 @@ export default function Login() {
   const [loginPass, setLoginPass] = useState('');
   const [loginRole, setLoginRole] = useState('student');
   const [remember, setRemember] = useState(false);
-  const [loginEmailErr, setLoginEmailErr] = useState(false);
-  const [loginPassErr, setLoginPassErr] = useState(false);
+  const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   // register form
   const [regFirst, setRegFirst] = useState('');
@@ -34,6 +35,9 @@ export default function Login() {
   const [regRole, setRegRole] = useState('student');
   const [regEmailErr, setRegEmailErr] = useState(false);
   const [regPassErr, setRegPassErr] = useState(false);
+  const [regFirstErr, setRegFirstErr] = useState('');
+  const [regLastErr, setRegLastErr] = useState('');
+  const [regConfirmErr, setRegConfirmErr] = useState(false);
   const [regStrength, setRegStrength] = useState(0);
   const [regLoading, setRegLoading] = useState(false);
 
@@ -112,18 +116,25 @@ export default function Login() {
     }
   }, []);
 
-  // if already logged in, send to role-specific dashboard
+  // Clear any previous session when the login page loads —
+  // prevents a stale token from silently redirecting a different user.
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    navigate(getDashboardRoute(getRoleFromToken(token)));
-  }, [navigate]);
+    localStorage.removeItem('token');
+    localStorage.removeItem('availableRoles');
+    window.dispatchEvent(new Event('auth-changed'));
+  }, []);
 
 
 
   const switchTab = login => {
     setIsLogin(login);
     setOverlay({show: false, title: '', msg: ''});
+    setLoginError('');
+    setRegEmailErr(false);
+    setRegPassErr(false);
+    setRegFirstErr('');
+    setRegLastErr('');
+    setRegConfirmErr(false);
   };
 
   const setRole = (role, panel) => {
@@ -189,26 +200,48 @@ export default function Login() {
     return faceapi;
   };
 
-  const openFaceScanner = async mode => {
+  const openFaceScanner = mode => {
     setFaceMode(mode);
     setFaceError('');
     setFaceInfo('Opening camera...');
     setFaceModalOpen(true);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-      streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
-      setFaceInfo('Camera ready. Keep your face centered and click Scan Face.');
-    } catch (err) {
-      setFaceError('Could not access camera. Please allow camera permission.');
-    }
+    // camera is started in the useEffect below, after the modal has rendered
+    // and the <video> element is guaranteed to be in the DOM
   };
+
+  // Start/stop the camera stream whenever the face modal opens or closes.
+  // Using a useEffect ensures the <video> ref is already mounted before we
+  // call getUserMedia, eliminating the race condition that caused a black/
+  // blank preview and subsequent "No face detected" errors.
+  useEffect(() => {
+    if (!faceModalOpen) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+        if (cancelled) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        setFaceInfo('Camera ready. Keep your face centered and click Scan Face.');
+      } catch (err) {
+        if (!cancelled) {
+          setFaceError('Could not access camera. Please allow camera permission.');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [faceModalOpen]);
 
   const closeFaceScanner = () => {
     stopCamera();
@@ -254,6 +287,10 @@ export default function Login() {
           payload.email = loginEmail.trim();
         }
 
+        // Clear any stale session before attempting face login
+        localStorage.removeItem('token');
+        localStorage.removeItem('availableRoles');
+
         const res = await api.post('/auth/face-login', {
           ...payload
         });
@@ -276,14 +313,19 @@ export default function Login() {
   };
 
   const handleLogin = async () => {
-    // no client-side validation; submit whatever the user enters
-    setLoginEmailErr(false);
-    setLoginPassErr(false);
+    setLoginError('');
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!loginEmail.trim() || !emailRegex.test(loginEmail.trim()) || !loginPass || loginPass.length < 8) {
+      setLoginError('Email or password is wrong.');
+      return;
+    }
 
     setLoginLoading(true);
     try {
       const res = await api.post('/auth/login', {
-        email: loginEmail,
+        email: loginEmail.trim(),
         password: loginPass,
         role: loginRole
       });
@@ -296,21 +338,57 @@ export default function Login() {
         navigate(getDashboardRoute(role));
       }, 1500);
     } catch (err) {
-      // display server error if desired
+      setLoginError('Email or password is wrong.');
     } finally {
       setLoginLoading(false);
     }
   };
 
   const handleRegister = async () => {
-    // no validation at all
     setRegEmailErr(false);
     setRegPassErr(false);
+    setRegConfirmErr(false);
+    setRegFirstErr('');
+    setRegLastErr('');
 
-    if (regPass !== regConfirmPass) {
-      setRegPassErr(true);
-      return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const nameRegex = /^[A-Za-z\s'\-]{2,50}$/;
+    let hasError = false;
+
+    if (!regFirst.trim() || !nameRegex.test(regFirst.trim())) {
+      setRegFirstErr(
+        !regFirst.trim() ? 'First name is required' :
+        regFirst.trim().length < 2 ? 'First name must be at least 2 characters' :
+        'First name may only contain letters, spaces, hyphens or apostrophes'
+      );
+      hasError = true;
     }
+    if (!regLast.trim() || !nameRegex.test(regLast.trim())) {
+      setRegLastErr(
+        !regLast.trim() ? 'Last name is required' :
+        regLast.trim().length < 2 ? 'Last name must be at least 2 characters' :
+        'Last name may only contain letters, spaces, hyphens or apostrophes'
+      );
+      hasError = true;
+    }
+    if (!regEmail.trim() || !emailRegex.test(regEmail.trim())) {
+      setRegEmailErr(true);
+      hasError = true;
+    }
+    if (!regPass || regPass.length < 8) {
+      setRegPassErr(true);
+      hasError = true;
+    }
+    if (regPass && regConfirmPass && regPass !== regConfirmPass) {
+      setRegConfirmErr(true);
+      hasError = true;
+    }
+    if (regYear && (isNaN(Number(regYear)) || Number(regYear) < 1 || Number(regYear) > 6 || !Number.isInteger(Number(regYear)))) {
+      setOverlay({ show: true, title: 'Invalid Year', msg: 'Year of study must be a whole number between 1 and 6.' });
+      setTimeout(() => setOverlay({ show: false, title: '', msg: '' }), 2500);
+      hasError = true;
+    }
+    if (hasError) return;
 
     if (regRole === 'tutor' && regFaceDescriptor.length === 0) {
       setOverlay({ show: true, title: 'Face ID required', msg: 'Please add your Face ID to register as a tutor.' });
@@ -321,19 +399,20 @@ export default function Login() {
     setRegLoading(true);
     try {
       await api.post('/auth/register', {
-        firstName: regFirst,
-        lastName: regLast,
-        name: `${regFirst} ${regLast}`.trim(),
-        email: regEmail,
+        firstName: regFirst.trim(),
+        lastName: regLast.trim(),
+        name: `${regFirst.trim()} ${regLast.trim()}`,
+        email: regEmail.trim(),
         password: regPass,
         faceDescriptor: regFaceDescriptor,
         role: regRole,
-        university: regUni,
-        degreeProgram: regDegree,
+        university: regUni.trim(),
+        degreeProgram: regDegree.trim(),
         year: regYear ? Number(regYear) : undefined
       });
-      setOverlay({ show: true, title: 'Account created!', msg: 'Setting up your profile…' });
+      setOverlay({ show: true, title: 'Account created!', msg: 'Redirecting to login…' });
       setTimeout(() => {
+        setOverlay({ show: false, title: '', msg: '' });
         setIsLogin(true);
       }, 2000);
     } catch (err) {
@@ -347,6 +426,14 @@ export default function Login() {
 
   return (
     <div className="layout">
+      <button
+        className="login-theme-toggle"
+        onClick={toggleTheme}
+        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        aria-label="Toggle theme"
+      >
+        {theme === 'dark' ? '☀️' : '🌙'}
+      </button>
       <div className="left">
         <div className="left-bg"></div>
         <div className="logo">
@@ -464,12 +551,8 @@ export default function Login() {
                   placeholder="you@example.com"
                   autoComplete="email"
                   value={loginEmail}
-                  onChange={e => setLoginEmail(e.target.value)}
-                  className={loginEmailErr ? 'err' : ''}
+                  onChange={e => { setLoginEmail(e.target.value); if (loginError) setLoginError(''); }}
                 />
-              </div>
-              <div className={`field-error ${loginEmailErr ? 'show' : ''}`} id="loginEmailErr">
-                Please enter your email
               </div>
             </div>
             <div className="field">
@@ -479,20 +562,17 @@ export default function Login() {
                 <input
                   type="password"
                   id="loginPass"
-                  className={`has-toggle ${loginPassErr ? 'err' : ''}`}
+                  className="has-toggle"
                   placeholder="••••••••"
                   autoComplete="current-password"
                   value={loginPass}
-                  onChange={e => setLoginPass(e.target.value)}
+                  onChange={e => { setLoginPass(e.target.value); if (loginError) setLoginError(''); }}
                 />
                 <button
                   className="input-toggle"
                   onClick={() => togglePwd('loginPass')}
                   tabIndex="-1"
                 >👁</button>
-              </div>
-              <div className={`field-error ${loginPassErr ? 'show' : ''}`} id="loginPassErr">
-                Password must be at least 8 characters
               </div>
             </div>
             <div className="row">
@@ -502,6 +582,9 @@ export default function Login() {
               </div>
               <a href="/forgot-password" className="forgot">Forgot password?</a>
             </div>
+            {loginError && (
+              <div className="login-error-msg">{loginError}</div>
+            )}
             <button className={`btn-submit ${loginLoading ? 'loading' : ''}`} id="loginBtn" onClick={handleLogin}>
               <span className="btn-text">Sign In to UniConnect</span>
               <div className="spinner"></div>
@@ -536,15 +619,17 @@ export default function Login() {
                 <label>First Name</label>
                 <div className="input-wrap">
                   <span className="input-icon">👤</span>
-                  <input type="text" id="regFirst" placeholder="Alex" value={regFirst} onChange={e => setRegFirst(e.target.value)} />
+                  <input type="text" id="regFirst" placeholder="Alex" value={regFirst} onChange={e => { setRegFirst(e.target.value); if (regFirstErr) setRegFirstErr(''); }} className={regFirstErr ? 'err' : ''} />
                 </div>
+                <div className={`field-error ${regFirstErr ? 'show' : ''}`}>{regFirstErr}</div>
               </div>
               <div className="field">
                 <label>Last Name</label>
                 <div className="input-wrap">
                   <span className="input-icon" style={{left:'.7rem'}}>👤</span>
-                  <input type="text" id="regLast" placeholder="Jordan" value={regLast} onChange={e => setRegLast(e.target.value)} />
+                  <input type="text" id="regLast" placeholder="Jordan" value={regLast} onChange={e => { setRegLast(e.target.value); if (regLastErr) setRegLastErr(''); }} className={regLastErr ? 'err' : ''} />
                 </div>
+                <div className={`field-error ${regLastErr ? 'show' : ''}`}>{regLastErr}</div>
               </div>
             </div>
             <div className="field">
@@ -556,12 +641,12 @@ export default function Login() {
                   id="regEmail"
                   placeholder="you@example.com"
                   value={regEmail}
-                  onChange={e => setRegEmail(e.target.value)}
+                  onChange={e => { setRegEmail(e.target.value); if (regEmailErr) setRegEmailErr(false); }}
                   className={regEmailErr ? 'err' : ''}
                 />
               </div>
               <div className={`field-error ${regEmailErr ? 'show' : ''}`} id="regEmailErr">
-                Please enter your email
+                Please enter a valid email address
               </div>
             </div>
             <div className="field">
@@ -574,7 +659,7 @@ export default function Login() {
                   className={`has-toggle ${regPassErr ? 'err' : ''}`}
                   placeholder="Min 8 characters"
                   value={regPass}
-                  onChange={e => setRegPass(e.target.value)}
+                  onChange={e => { setRegPass(e.target.value); if (regPassErr) setRegPassErr(false); }}
                 />
                 <button className="input-toggle" onClick={() => togglePwd('regPass')} tabIndex="-1">👁</button>
               </div>
@@ -606,12 +691,15 @@ export default function Login() {
                 <input
                   type="password"
                   id="regConfirmPass"
-                  className={`has-toggle ${regPassErr ? 'err' : ''}`}
+                  className={`has-toggle ${regConfirmErr ? 'err' : ''}`}
                   placeholder="Re-enter password"
                   value={regConfirmPass}
-                  onChange={e => setRegConfirmPass(e.target.value)}
+                  onChange={e => { setRegConfirmPass(e.target.value); if (regConfirmErr) setRegConfirmErr(false); }}
                 />
                 <button className="input-toggle" onClick={() => togglePwd('regConfirmPass')} tabIndex="-1">👁</button>
+              </div>
+              <div className={`field-error ${regConfirmErr ? 'show' : ''}`}>
+                Passwords do not match
               </div>
             </div>
             <div className="field" style={{marginBottom:'1.4rem'}}>
@@ -634,7 +722,15 @@ export default function Login() {
                   <label>Year <span className="opt">(optional)</span></label>
                   <div className="input-wrap">
                     <span className="input-icon">🎓</span>
-                    <input type="number" id="regYear" placeholder="1" value={regYear} onChange={e => setRegYear(e.target.value)} />
+                    <select id="regYear" value={regYear} onChange={e => setRegYear(e.target.value)} style={{paddingLeft:'2.6rem'}}>
+                      <option value="">Select year</option>
+                      <option value="1">Year 1</option>
+                      <option value="2">Year 2</option>
+                      <option value="3">Year 3</option>
+                      <option value="4">Year 4</option>
+                      <option value="5">Year 5</option>
+                      <option value="6">Year 6</option>
+                    </select>
                   </div>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { ThemeProvider } from './ThemeContext';
 import Login from './pages/Login';
 import HomePage from './pages/HomePage';
 import StudentDashboard from './pages/StudentDashboard';
@@ -8,6 +9,7 @@ import TutorChatting from './pages/TutorChatting';
 import TutorEarnings from './pages/TutorEarnings';
 import AdminDashboard from './pages/AdminDashboard';
 import StudyRoom from './pages/StudyRoom';
+import UserProfilePage from './pages/UserProfilePage';
 import Navbar from './components/Navbar';
 import { useEffect } from 'react';
 
@@ -87,6 +89,7 @@ function AppWrapper() {
         <Route path="/tutor/earnings" element={<Private><TutorEarnings/></Private>} />
         <Route path="/admin" element={<Private><AdminDashboard/></Private>} />
         <Route path="/study-room" element={<Private><StudyRoom/></Private>} />
+        <Route path="/profile" element={<Private><UserProfilePage/></Private>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </div>
@@ -97,7 +100,9 @@ function AppWrapper() {
 function App() {
   return (
     <BrowserRouter>
-      <AppWrapper />
+      <ThemeProvider>
+        <AppWrapper />
+      </ThemeProvider>
     </BrowserRouter>
   );
 }
