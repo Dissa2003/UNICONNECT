@@ -15,8 +15,7 @@ const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-
 export default function StudentDashboard(){
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { theme, isDk, pal } = useTheme();
-  const { theme, toggleTheme } = useTheme();
+  const { theme } = useTheme();
   const [profile, setProfile] = useState({
     university:'', degreeProgram:'', year:'', personalityType:'',
     subjects:[], weakSubjects:[], strongSubjects:[], skills:[],
@@ -1716,24 +1715,6 @@ export default function StudentDashboard(){
                 </div>
               </div>
             </div>
-          <div style={{marginTop:'2rem',padding:'1.6rem',borderRadius:'16px',
-            background: levelBg[stressResult.stress_label],
-            border: `1px solid ${levelBorder[stressResult.stress_label]}`}}>
-            <div style={{display:'flex',alignItems:'center',gap:'1rem',marginBottom:'1.2rem'}}>
-              <span style={{fontSize:'2.4rem'}}>{levelEmoji[stressResult.stress_label]}</span>
-              <div>
-                <div style={{fontSize:'0.72rem',letterSpacing:'0.1em',textTransform:'uppercase',color:pal.textMuted,marginBottom:'0.2rem'}}>AI Assessment Result</div>
-                <div style={{fontFamily:'Syne',fontSize:'1.8rem',fontWeight:800,color: levelColor[stressResult.stress_label]}}>
-                  {stressResult.stress_label} Stress
-                </div>
-              </div>
-            </div>
-            <div style={{fontSize:'0.78rem',fontWeight:600,letterSpacing:'0.08em',textTransform:'uppercase',color:pal.textMuted,marginBottom:'0.7rem'}}>Recommendations</div>
-            <ul style={{margin:0,paddingLeft:'1.1rem'}}>
-              {levelRecs[stressResult.stress_label].map((rec, i) => (
-                <li key={i} style={{color:pal.textSemi,fontSize:'0.87rem',marginBottom:'0.4rem',lineHeight:1.5}}>{rec}</li>
-              ))}
-            </ul>
           </div>
         )}
 
