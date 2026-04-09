@@ -4,13 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
-<<<<<<< Updated upstream
-=======
 import { useTheme } from '../ThemeContext';
 import BreathingExercise from '../components/BreathingExercise';
 import MeditationTimer from '../components/MeditationTimer';
 import StressHistoryChart from '../components/StressHistoryChart';
->>>>>>> Stashed changes
 
 const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
@@ -1288,14 +1285,6 @@ export default function StudentDashboard(){
 
     return (
       <div style={{animation:'fadeIn 0.4s ease-out'}}>
-<<<<<<< Updated upstream
-        <h2 style={{fontFamily:'Syne',fontSize:'1.6rem',fontWeight:800,letterSpacing:'-0.04em',background:'linear-gradient(120deg,#FFFFFF,#38BFFF)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text',marginBottom:'0.4rem'}}>
-          Wellness Check
-        </h2>
-        <p style={{color:'rgba(255,255,255,.45)',fontSize:'0.88rem',marginBottom:'2rem'}}>
-          Answer honestly — this AI model estimates your stress level and recommends actions.
-        </p>
-=======
 
         {/* ── Section header ── */}
         <h2 style={{fontFamily:'Syne',fontSize:'1.6rem',fontWeight:800,letterSpacing:'-0.04em',background:'linear-gradient(120deg,#1A6BFF,#38BFFF)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',backgroundClip:'text',marginBottom:'1.6rem'}}>
@@ -1330,7 +1319,6 @@ export default function StudentDashboard(){
           <p style={{color:pal.textMuted,fontSize:'0.88rem',marginBottom:'2rem'}}>
             Answer honestly — this AI model estimates your stress level and recommends actions.
           </p>
->>>>>>> Stashed changes
 
         {QUESTIONS.map((q) => (
           <div key={q.id} style={{marginBottom:'1rem',padding:'1.2rem 1.4rem',background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.08)',borderRadius:'14px'}}>
@@ -1410,26 +1398,7 @@ export default function StudentDashboard(){
         </button>
 
         {stressResult && !stressResult.error && (
-<<<<<<< Updated upstream
-          <div style={{marginTop:'2rem',padding:'1.6rem',borderRadius:'16px',
-            background: levelBg[stressResult.stress_label],
-            border: `1px solid ${levelBorder[stressResult.stress_label]}`}}>
-            <div style={{display:'flex',alignItems:'center',gap:'1rem',marginBottom:'1.2rem'}}>
-              <span style={{fontSize:'2.4rem'}}>{levelEmoji[stressResult.stress_label]}</span>
-              <div>
-                <div style={{fontSize:'0.72rem',letterSpacing:'0.1em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginBottom:'0.2rem'}}>AI Assessment Result</div>
-                <div style={{fontFamily:'Syne',fontSize:'1.8rem',fontWeight:800,color: levelColor[stressResult.stress_label]}}>
-                  {stressResult.stress_label} Stress
-                </div>
-              </div>
-            </div>
-            <div style={{fontSize:'0.78rem',fontWeight:600,letterSpacing:'0.08em',textTransform:'uppercase',color:'rgba(255,255,255,.4)',marginBottom:'0.7rem'}}>Recommendations</div>
-            <ul style={{margin:0,paddingLeft:'1.1rem'}}>
-              {levelRecs[stressResult.stress_label].map((rec, i) => (
-                <li key={i} style={{color:'rgba(255,255,255,.75)',fontSize:'0.87rem',marginBottom:'0.4rem',lineHeight:1.5}}>{rec}</li>
-              ))}
-            </ul>
-=======
+
           /* ── Result Popup Modal ── */
           <div
             onClick={() => setStressResult(null)}
@@ -1523,7 +1492,6 @@ export default function StudentDashboard(){
                 </div>
               </div>
             </div>
->>>>>>> Stashed changes
           </div>
         )}
 
@@ -1854,12 +1822,8 @@ function getStyles() {
     @keyframes d1 { to { transform: translate(40px, 60px); } }
     @keyframes d2 { to { transform: translate(-30px, -40px); } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } }
-<<<<<<< Updated upstream
-    .empty { color: rgba(255,255,255,.2) !important; font-style: italic; }
-=======
     @keyframes slideUp { from { opacity: 0; transform: translateY(40px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
     .empty { color: var(--sd-muted) !important; font-style: italic; }
->>>>>>> Stashed changes
     input:focus, select:focus { border-color: var(--azure) !important; background: rgba(26,107,255,.06) !important; }
     select option { background: #0D1730; color: white; }
   `;
