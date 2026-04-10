@@ -114,6 +114,15 @@ if (docRoutes) {
   app.use("/api/docs", docRoutes);
 }
 
+// Audio room scheduling and status routes
+try {
+  const audioRoutes = require("./routes/audioRoutes");
+  app.use("/api/audio", audioRoutes);
+  console.log("✓ audioRoutes loaded");
+} catch (err) {
+  console.error("✗ Error loading audioRoutes:", err.message);
+}
+
 server.listen(5000, async () => {
   try {
     await connectDB();

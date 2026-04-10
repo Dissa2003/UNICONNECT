@@ -22,7 +22,7 @@ async function syncReminder(type, { localTaskId, email, title, triggerTime }) {
     await axios.post(
       `${BASE_URL}/api/sync`,
       { type, localTaskId, email, title, triggerTime },
-      { timeout: 8000 } // Don't hang forever hor — 8s max
+      { timeout: 15000 } // 15s — Vercel cold starts can take up to ~10s on first request
     );
     console.log(`[reminderSync] ${type} synced for task ${localTaskId} lor`);
   } catch (err) {
