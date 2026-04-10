@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import api from '../services/api';
 import { useTheme } from '../ThemeContext';
+import VoiceActionCenter from '../components/VoiceActionCenter';
 
 const SOCKET_URL = 'http://localhost:5000';
 
@@ -600,6 +601,25 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
                 👥 Members
               </button>
             </div>
+
+            {/* Voice Action Center — schedule + join voice calls for this chat lor */}
+            {activeGroup && (() => {
+              // Find the other member (not the current user) to pass as participantId lah
+              // Decode current user email from JWT lor
+              let currentUserEmail = '';
+              try {
+                const payload = JSON.parse(atob(localStorage.getItem('token').split('.')[1]));
+                currentUserEmail = payload.email || '';
+              } catch { /* ignore lah */ }
+              return (
+                <VoiceActionCenter
+                  chatId={String(activeGroup)}
+                  members={members}
+                  currentUserId={String(currentUserId.current)}
+                  currentUserEmail={currentUserEmail}
+                />
+              );
+            })()}
 
             {/* Members panel */}
             {membersOpen && (
