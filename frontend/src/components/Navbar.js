@@ -132,7 +132,7 @@ export default function Navbar() {
             <button className="nav-logout" onClick={handleLogout}>Logout</button>
           </>
         ) : (
-          <Link to="/login" className="nav-login">Login</Link>
+          <Link to="/login" className="nav-login allow-public-action">Login</Link>
         )}
       </div>
     </nav>
