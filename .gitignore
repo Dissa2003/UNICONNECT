@@ -127,3 +127,12 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# -----------------------------
+# Reminders microservice
+# -----------------------------
+reminders-service/.env
+reminders-service/.env.*
+reminders-service/node_modules/
+reminders-service/.vercel/
+reminders-service/server.local.js
