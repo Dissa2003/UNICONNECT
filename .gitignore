@@ -136,3 +136,11 @@ reminders-service/.env.*
 reminders-service/node_modules/
 reminders-service/.vercel/
 reminders-service/server.local.js
+
+# -----------------------------
+# Voice-room microservice
+# -----------------------------
+voice-room-service/.env
+voice-room-service/.env.*
+voice-room-service/node_modules/
+voice-room-service/.vercel/

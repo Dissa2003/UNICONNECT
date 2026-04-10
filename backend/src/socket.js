@@ -203,6 +203,37 @@ function initSocket(httpServer) {
       // Leave the socket room too — clean up lor
       socket.leave(`voice:${roomId}`);
     });
+
+    // ── voice-room:* events — used by useVoiceChat.js / voice-room-service lah ──
+    // These mirror join-voice-room/signal-data/end-call but with the microservice
+    // event naming convention so frontend hook works against main backend lor
+    socket.on("voice-room:join", ({ roomId }) => {
+      if (!roomId) return;
+      socket.join(`voice:${roomId}`);
+      console.log(`🎙️  ${socket.userId} joined voice:${roomId}`);
+      socket.to(`voice:${roomId}`).emit("voice-peer-ready", {
+        peerId: socket.userId,
+        roomId,
+      });
+    });
+
+    socket.on("voice-room:signal", ({ roomId, signalData }) => {
+      if (!roomId || !signalData) return;
+      socket.to(`voice:${roomId}`).emit("voice-room:signal", {
+        from: socket.userId,
+        signalData,
+      });
+    });
+
+    socket.on("voice-room:end", ({ roomId }) => {
+      if (!roomId) return;
+      console.log(`📵  ${socket.userId} ended voice-room: ${roomId}`);
+      socket.to(`voice:${roomId}`).emit("voice-room:ended", {
+        by: socket.userId,
+        roomId,
+      });
+      socket.leave(`voice:${roomId}`);
+    });
     // ─────────────────────────────────────────────────────────────────────────
 
     socket.on("disconnect", () => {
