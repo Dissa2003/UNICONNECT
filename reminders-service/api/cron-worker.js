@@ -1,17 +1,14 @@
 // api/cron-worker.js
-// Vercel Cron Job — runs every 5 minutes automatically lor (configured in vercel.json)
-// GET /api/cron-worker — Vercel calls this on schedule, we send pending reminder emails lah
-// Don't manually call this in production - let Vercel handle it hor
+// GET /api/cron-worker — Vercel calls this on schedule, sends pending reminder emails
 require('dotenv').config();
 
 const connectDB = require('../lib/mongodb');
 const Reminder = require('../models/Reminder');
 const nodemailer = require('nodemailer');
 
-// Build a nice HTML email body lah - at least make it look decent
 function buildEmailHtml(title, triggerTime) {
   const formattedTime = new Date(triggerTime).toLocaleString('en-SG', {
-    timeZone: 'Asia/Colombo', // Sri Lanka time hor
+    timeZone: 'Asia/Colombo',
     dateStyle: 'full',
     timeStyle: 'short',
   });
@@ -68,74 +65,55 @@ function buildEmailHtml(title, triggerTime) {
 }
 
 module.exports = async (req, res) => {
-  // Only GET allowed - Vercel cron sends GET request lor
   if (req.method !== 'GET') {
-    return res.status(405).json({ success: false, message: 'Method not allowed lah' });
+    return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
 
-  // Vercel sends Authorization header for cron jobs - check it hor (optional but safer)
-  // For local dev, skip this check can
-  if (process.env.VERCEL === '1') {
-    const authHeader = req.headers['authorization'];
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      // Wah, unauthorized caller - reject lah
-      // Note: CRON_SECRET is auto-set by Vercel - no need add to .env manually
-      return res.status(401).json({ success: false, message: 'Unauthorized lor' });
-    }
-  }
-
-  // Connect to Atlas lah
   try {
     await connectDB();
   } catch (err) {
-    console.error('DB connection failed lor:', err.message);
-    return res.status(503).json({ success: false, message: 'DB connection failed lah' });
+    console.error('DB connection failed:', err.message);
+    return res.status(503).json({ success: false, message: 'DB connection failed' });
   }
 
   const now = new Date();
 
-  // Find all reminders that are due and still pending - these need emails sent lah
   let dueReminders;
   try {
     dueReminders = await Reminder.find({
       status: 'pending',
-      triggerTime: { $lte: now }, // triggerTime is in the past or now lor
+      triggerTime: { $lte: now },
     });
   } catch (err) {
-    console.error('Query failed lah:', err.message);
-    return res.status(500).json({ success: false, message: 'DB query failed lor' });
+    console.error('Query failed:', err.message);
+    return res.status(500).json({ success: false, message: 'DB query failed' });
   }
 
-  // Nothing to do - all quiet lah
   if (dueReminders.length === 0) {
-    return res.json({ success: true, message: 'No pending reminders lah, chill lor', sent: 0, failed: 0 });
+    return res.json({ success: true, message: 'No pending reminders', sent: 0, failed: 0 });
   }
 
-  console.log(`Found ${dueReminders.length} due reminders - send emails lah`);
+  console.log(`Found ${dueReminders.length} due reminders`);
 
-  // Setup Gmail transporter - use App Password hor, not actual Gmail password
-  // Spaces in app password are ignored by Gmail - shiok no need strip
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+      pass: (process.env.EMAIL_PASS || '').replace(/\s/g, ''),
     },
   });
 
-  // Verify transporter config - catch wrong credentials early lah
   try {
     await transporter.verify();
   } catch (err) {
-    console.error('Email transporter verify failed lah:', err.message);
-    return res.status(500).json({ success: false, message: 'Email config wrong lor - check EMAIL_USER and EMAIL_PASS' });
+    console.error('Email transporter verify failed:', err.message);
+    return res.status(500).json({ success: false, message: 'Email config error - check EMAIL_USER and EMAIL_PASS' });
   }
 
   let sentCount = 0;
   let failedCount = 0;
   const results = [];
 
-  // Loop through each due reminder and send email one by one lor
   for (const reminder of dueReminders) {
     try {
       await transporter.sendMail({
@@ -143,20 +121,17 @@ module.exports = async (req, res) => {
         to: reminder.email,
         subject: `⏰ Reminder: ${reminder.title}`,
         html: buildEmailHtml(reminder.title, reminder.triggerTime),
-        // Plain text fallback for email clients that don't support HTML lor
         text: `Reminder: ${reminder.title}\n\nYour task reminder is due.\n\nSet for: ${new Date(reminder.triggerTime).toLocaleString()}\n\n- UniConnect`,
       });
 
-      // Wah email sent - update status to 'sent' lor
       reminder.status = 'sent';
       await reminder.save();
       sentCount++;
 
       results.push({ localTaskId: reminder.localTaskId, status: 'sent' });
-      console.log(`Sent reminder for task ${reminder.localTaskId} to ${reminder.email} lor`);
+      console.log(`Sent reminder for task ${reminder.localTaskId} to ${reminder.email}`);
     } catch (emailErr) {
-      // Alamak, email send failed - mark as failed but continue with others lah
-      console.error(`Failed to send reminder for task ${reminder.localTaskId} lah:`, emailErr.message);
+      console.error(`Failed to send reminder for task ${reminder.localTaskId}:`, emailErr.message);
       reminder.status = 'failed';
       await reminder.save();
       failedCount++;
@@ -165,10 +140,9 @@ module.exports = async (req, res) => {
     }
   }
 
-  // Return summary - steady lah
   return res.json({
     success: true,
-    message: `Cron done lor - ${sentCount} sent, ${failedCount} failed`,
+    message: `Done - ${sentCount} sent, ${failedCount} failed`,
     sent: sentCount,
     failed: failedCount,
     results,
