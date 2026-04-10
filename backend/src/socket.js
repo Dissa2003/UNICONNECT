@@ -152,6 +152,59 @@ function initSocket(httpServer) {
     };
     const reminderInterval = setInterval(checkReminders, 60 * 1000);
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // WEBRTC SIGNALING — Audio Room events
+    // These are all relay-only lah — the backend never touches the SDP itself
+    // We just pass the signal data between the two peers lor
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // join-voice-room — Both users must call this with the same roomId
+    // Once both are in, the initiating peer (host) starts the WebRTC handshake sia
+    socket.on("join-voice-room", ({ roomId }) => {
+      if (!roomId) return;
+
+      socket.join(`voice:${roomId}`);
+      console.log(`🎙️  ${socket.userId} joined voice room: ${roomId}`);
+
+      // Tell the OTHER person in this room that a new peer has arrived lor
+      // Only emit to the room EXCLUDING this socket — no need to tell yourself lah
+      socket.to(`voice:${roomId}`).emit("voice-peer-joined", {
+        peerId: socket.userId,
+        roomId,
+      });
+    });
+
+    // signal-data — Relay WebRTC offer, answer, and ICE candidates between peers
+    // simple-peer on the frontend fires this automatically for us lor
+    // We just forward the signal blob to the other person in the room sia
+    socket.on("signal-data", ({ roomId, signalData }) => {
+      if (!roomId || !signalData) return;
+
+      // Broadcast to the OTHER peer in the voice room — not back to sender lah
+      socket.to(`voice:${roomId}`).emit("signal-data", {
+        from: socket.userId,
+        signalData,
+      });
+    });
+
+    // end-call — One peer ended the call, tell the other to clean up lor
+    // This fires when user clicks End Call button or the component unmounts sia
+    socket.on("end-call", ({ roomId }) => {
+      if (!roomId) return;
+
+      console.log(`📵  ${socket.userId} ended call in room: ${roomId}`);
+
+      // Notify the other peer in the room to disconnect their WebRTC connection lah
+      socket.to(`voice:${roomId}`).emit("call-ended", {
+        by: socket.userId,
+        roomId,
+      });
+
+      // Leave the socket room too — clean up lor
+      socket.leave(`voice:${roomId}`);
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
     socket.on("disconnect", () => {
       clearInterval(reminderInterval);
       console.log(`⚡ Socket disconnected: ${socket.userId}`);
