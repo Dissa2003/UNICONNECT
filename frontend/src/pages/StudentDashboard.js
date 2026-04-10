@@ -3,11 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import api from '../services/api';
 import { useTheme } from '../ThemeContext';
 import BreathingExercise from '../components/BreathingExercise';
 import MeditationTimer from '../components/MeditationTimer';
 import StressHistoryChart from '../components/StressHistoryChart';
+import TodoList from '../components/TodoList';
+import MyDocs from '../components/MyDocs';
 
 const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
@@ -76,6 +79,9 @@ export default function StudentDashboard(){
   const streamRef = useRef(null);
   const faceApiRef = useRef(null);
   const modelsLoadedRef = useRef(false);
+  const reminderSocketRef = useRef(null);
+  const [reminderNotifs, setReminderNotifs] = useState([]); // [{_id, title, description, dueDate}]
+  const [todosBadge, setTodosBadge] = useState(0);
 
   // Body background / color — mirrors what TutorNav.js does on tutor pages
   useEffect(() => {
@@ -88,6 +94,19 @@ export default function StudentDashboard(){
       document.body.style.color      = prevColor;
     };
   }, [theme]);
+
+  // Connect socket for live reminder notifications
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const socket = io('http://localhost:5000', { auth: { token }, transports: ['websocket'] });
+    reminderSocketRef.current = socket;
+    socket.on('reminder-alert', (todo) => {
+      setReminderNotifs(prev => [todo, ...prev]);
+      setTodosBadge(n => n + 1);
+    });
+    return () => { socket.disconnect(); };
+  }, []);
 
   // Load profile and face status on mount
   useEffect(() => {
@@ -712,11 +731,14 @@ export default function StudentDashboard(){
           </div>
 
           <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:pal.textDim,padding:'0.8rem 0.5rem 0.3rem'}}>Profile Sections</div>
-          {['overview','academic','subjects','goals','learning','interests','availability','bookTutor','wellness'].map(s => (
+          {['overview','academic','subjects','goals','learning','interests','availability','bookTutor','wellness','todos','mydocs'].map(s => (
             <div key={s} onClick={() => setCurrentSection(s)} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection===s?pal.sectionKey:pal.sectionInactive,cursor:'pointer',transition:'all 0.2s',background:currentSection===s?'rgba(26,107,255,.12)':'transparent',border:currentSection===s?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
               <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection===s?'#1A6BFF':pal.dot,flexShrink:0,transition:'all 0.2s'}}></span>
               <span style={{fontSize:'1rem',width:'20px',textAlign:'center',flexShrink:0}}>{getIcon(s)}</span>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {s === 'todos' ? 'To-Do List' : s === 'mydocs' ? 'My Docs' : s.charAt(0).toUpperCase() + s.slice(1)}
+              {s === 'todos' && todosBadge > 0 && (
+                <span onClick={e => { e.stopPropagation(); setTodosBadge(0); }} style={{marginLeft:'auto',fontSize:'0.65rem',fontWeight:700,padding:'0.1rem 0.5rem',borderRadius:'99px',background:'rgba(179,136,255,.2)',color:'#B388FF',cursor:'pointer'}}>{todosBadge}</span>
+              )}
             </div>
           ))}
           
@@ -750,12 +772,31 @@ export default function StudentDashboard(){
           {currentSection === 'bookTutor' && renderBookTutor()}
           {currentSection === 'matching' && renderMatching()}
           {currentSection === 'wellness' && renderWellness()}
+          {currentSection === 'todos' && <TodoList pal={pal} isDk={isDk} />}
+          {currentSection === 'mydocs' && <MyDocs pal={pal} isDk={isDk} />}
         </main>
       </div>
 
       {toast.show && (
         <div style={{position:'fixed',bottom:'2rem',right:'2rem',zIndex:999,padding:'0.85rem 1.4rem',borderRadius:'12px',background:toast.isError?'rgba(255,82,114,.1)':'rgba(0,229,195,.12)',border:toast.isError?'1px solid rgba(255,82,114,.25)':'1px solid rgba(0,229,195,.25)',color:toast.isError?'#FF5272':'#00E5C3',fontSize:'0.85rem',fontWeight:500,display:'flex',alignItems:'center',gap:'0.6rem'}}>
           ✓ {toast.msg}
+        </div>
+      )}
+
+      {/* Reminder notifications stack */}
+      {reminderNotifs.length > 0 && (
+        <div style={{position:'fixed',top:'5rem',right:'1.5rem',zIndex:1500,display:'flex',flexDirection:'column',gap:'0.6rem',maxWidth:'340px',width:'100%'}}>
+          {reminderNotifs.map((n, i) => (
+            <div key={n._id + i} style={{background:isDk?'#12182B':'#fff',border:'1px solid rgba(179,136,255,.45)',borderLeft:'4px solid #B388FF',borderRadius:'12px',padding:'0.9rem 1rem',boxShadow:'0 8px 28px rgba(0,0,0,.3)',display:'flex',gap:'0.8rem',alignItems:'flex-start'}}>
+              <span style={{fontSize:'1.4rem',flexShrink:0}}>🔔</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:'0.85rem',color:isDk?'#fff':'#0d1b3e',marginBottom:'0.2rem'}}>Reminder: {n.title}</div>
+                {n.description && <div style={{fontSize:'0.75rem',color:isDk?'rgba(255,255,255,.55)':'#5a6a8a',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.description}</div>}
+                {n.dueDate && <div style={{fontSize:'0.72rem',color:'#B388FF',marginTop:'0.2rem'}}>Due: {new Date(n.dueDate).toLocaleString()}</div>}
+              </div>
+              <button onClick={() => setReminderNotifs(prev => prev.filter((_, idx) => idx !== i))} style={{background:'none',border:'none',color:isDk?'rgba(255,255,255,.4)':'#a0abc4',cursor:'pointer',fontSize:'1rem',lineHeight:1,padding:'0',flexShrink:0}}>✕</button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -2009,7 +2050,7 @@ const StatCard = ({label, value}) => (
 );
 
 function getIcon(section) {
-  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅', bookTutor:'👨‍🏫', wellness:'💆'};
+  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅', bookTutor:'👨‍🏫', wellness:'💆', todos:'📝', mydocs:'📂'};
   return icons[section] || '⚙';
 }
 

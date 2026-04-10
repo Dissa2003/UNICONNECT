@@ -2,6 +2,7 @@ const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const StudyGroup = require("./models/StudyGroup");
 const Message = require("./models/Message");
+const Todo = require("./models/Todo");
 const { getBotReply } = require("./services/botService");
 const { queryPdf } = require("./services/pdfService");
 
@@ -123,7 +124,36 @@ function initSocket(httpServer) {
       }
     });
 
+    // ── Reminder scheduler – check every 60 s for due reminders ──
+    const checkReminders = async () => {
+      try {
+        const now = new Date();
+        const windowStart = new Date(now.getTime() - 60 * 1000);
+        const due = await Todo.find({
+          userId: socket.userId,
+          reminderAt: { $gte: windowStart, $lte: now },
+          reminderSent: false,
+          completed: false,
+        });
+        for (const todo of due) {
+          socket.emit("reminder-alert", {
+            _id: String(todo._id),
+            title: todo.title,
+            description: todo.description,
+            dueDate: todo.dueDate,
+            reminderAt: todo.reminderAt,
+          });
+          todo.reminderSent = true;
+          await todo.save();
+        }
+      } catch (err) {
+        console.error("reminder check error:", err.message);
+      }
+    };
+    const reminderInterval = setInterval(checkReminders, 60 * 1000);
+
     socket.on("disconnect", () => {
+      clearInterval(reminderInterval);
       console.log(`⚡ Socket disconnected: ${socket.userId}`);
     });
   });
