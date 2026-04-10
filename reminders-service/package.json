@@ -1,0 +1,18 @@
+{
+  "name": "reminders-service",
+  "version": "1.0.0",
+  "description": "Standalone reminder microservice for UniConnect - run on Vercel lah",
+  "private": true,
+  "scripts": {
+    "local": "node server.local.js",
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.4.0",
+    "nodemailer": "^6.9.14"
+  },
+  "devDependencies": {
+    "express": "^5.2.1"
+  }
+}

@@ -7,7 +7,7 @@ const cors = require("cors");
 const connectDB = require("./config/db");
 const { initSocket } = require("./socket");
 
-let profileRoutes, matchRoutes, tutorProfileRoutes, studyRoomRoutes, tutorBookingRoutes, stressRoutes;
+let profileRoutes, matchRoutes, tutorProfileRoutes, studyRoomRoutes, tutorBookingRoutes, stressRoutes, todoRoutes, docRoutes;
 
 try {
   profileRoutes = require("./routes/profileRoutes");
@@ -51,6 +51,20 @@ try {
   console.error("✗ Error loading stressRoutes:", err.message);
 }
 
+try {
+  todoRoutes = require("./routes/todoRoutes");
+  console.log("✓ todoRoutes loaded");
+} catch (err) {
+  console.error("✗ Error loading todoRoutes:", err.message);
+}
+
+try {
+  docRoutes = require("./routes/docRoutes");
+  console.log("✓ docRoutes loaded");
+} catch (err) {
+  console.error("✗ Error loading docRoutes:", err.message);
+}
+
 const app = express();
 const server = http.createServer(app);
 
@@ -90,6 +104,14 @@ if (tutorBookingRoutes) {
 
 if (stressRoutes) {
   app.use("/api/stress", stressRoutes);
+}
+
+if (todoRoutes) {
+  app.use("/api/todos", todoRoutes);
+}
+
+if (docRoutes) {
+  app.use("/api/docs", docRoutes);
 }
 
 server.listen(5000, async () => {
