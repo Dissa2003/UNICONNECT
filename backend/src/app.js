@@ -102,6 +102,14 @@ if (tutorBookingRoutes) {
   app.use("/api/tutor-bookings", tutorBookingRoutes);
 }
 
+try {
+  const paymentRoutes = require("./routes/paymentRoutes");
+  app.use("/api/payments", paymentRoutes);
+  console.log("✓ paymentRoutes loaded");
+} catch (err) {
+  console.error("✗ Error loading paymentRoutes:", err.message);
+}
+
 if (stressRoutes) {
   app.use("/api/stress", stressRoutes);
 }

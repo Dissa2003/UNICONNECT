@@ -11,6 +11,7 @@ import MeditationTimer from '../components/MeditationTimer';
 import StressHistoryChart from '../components/StressHistoryChart';
 import TodoList from '../components/TodoList';
 import MyDocs from '../components/MyDocs';
+import PaymentGateway from '../components/PaymentGateway';
 
 const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
@@ -44,6 +45,7 @@ export default function StudentDashboard(){
   const [tutorMatches, setTutorMatches] = useState([]);
   const [findingTutors, setFindingTutors] = useState(false);
   const [bookingTutorIds, setBookingTutorIds] = useState({});
+  const [paymentModal, setPaymentModal] = useState(null); // { matchItem } | null
   const [selectedMatchIds, setSelectedMatchIds] = useState([]);
   const [groupRequests, setGroupRequests] = useState([]);
   const [detailsPopup, setDetailsPopup] = useState({ show: false, invitee: null, request: null });
@@ -411,32 +413,53 @@ export default function StudentDashboard(){
     }
   };
 
-  const bookTutor = async (matchItem) => {
+  const bookTutor = (matchItem) => {
     const tutorProfileId = matchItem?.tutor?._id;
     if (!tutorProfileId) {
       showToast('Unable to book this tutor right now', true);
       return;
     }
 
+    const isFree = matchItem?.tutor?.isFree || Number(matchItem?.tutor?.hourlyRate || 0) === 0;
+
+    if (isFree) {
+      // Free tutor — book directly without payment
+      bookFreetutor(matchItem);
+    } else {
+      // Paid tutor — open payment gateway
+      setPaymentModal({ matchItem });
+    }
+  };
+
+  const bookFreetutor = async (matchItem) => {
+    const tutorProfileId = matchItem?.tutor?._id;
     try {
       setBookingTutorIds((prev) => ({ ...prev, [tutorProfileId]: true }));
       await api.post('/tutor-bookings', {
         studentProfileId: profile._id,
         tutorProfileId,
         subject: tutorQuery.subject,
-        maxBudget: Number(tutorQuery.maxBudget),
+        maxBudget: 0,
         learningStyle: tutorQuery.learningStyle,
         language: tutorQuery.language,
         requestedAvailability: tutorQuery.availability,
         matchScore: matchItem.score || 0,
         reasons: matchItem.reasons || [],
       });
-
       showToast('Tutor booking request sent');
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to send booking request', true);
       setBookingTutorIds((prev) => ({ ...prev, [tutorProfileId]: false }));
     }
+  };
+
+  const handlePaymentSuccess = (result) => {
+    const tutorProfileId = paymentModal?.matchItem?.tutor?._id;
+    if (tutorProfileId) {
+      setBookingTutorIds((prev) => ({ ...prev, [tutorProfileId]: true }));
+    }
+    setPaymentModal(null);
+    showToast('Payment successful — booking request sent!');
   };
 
   const toggleMatchSelection = (studentProfileId) => {
@@ -698,10 +721,10 @@ export default function StudentDashboard(){
     <>
       <style>{getStyles(theme)}</style>
       
-      <div className="cur" id="cO" style={{position:'fixed',top:0,left:0,zIndex:9999,pointerEvents:'none'}}>
+      <div className="cur" id="cO" style={{position:'fixed',top:0,left:0,zIndex:99999,pointerEvents:'none'}}>
         <div className="cur-ring" style={{width:'34px',height:'34px',border:'1.5px solid #1A6BFF',borderRadius:'50%',transform:'translate(-50%,-50%)',opacity:0.65,transition:'all 0.25s'}}></div>
       </div>
-      <div className="cur" id="cI" style={{position:'fixed',top:0,left:0,zIndex:9999,pointerEvents:'none'}}>
+      <div className="cur" id="cI" style={{position:'fixed',top:0,left:0,zIndex:99999,pointerEvents:'none'}}>
         <div className="cur-dot" style={{width:'8px',height:'8px',borderRadius:'50%',background:'#00E5C3',transform:'translate(-50%,-50%)'}}></div>
       </div>
 
@@ -899,6 +922,24 @@ export default function StudentDashboard(){
             </div>
           </div>
         </div>
+      )}
+
+      {/* Payment Gateway Modal */}
+      {paymentModal && (
+        <PaymentGateway
+          tutor={paymentModal.matchItem}
+          bookingData={{
+            studentProfileId: profile._id,
+            subject: tutorQuery.subject,
+            learningStyle: tutorQuery.learningStyle,
+            language: tutorQuery.language,
+            availability: tutorQuery.availability,
+            matchScore: paymentModal.matchItem?.score || 0,
+            reasons: paymentModal.matchItem?.reasons || [],
+          }}
+          onSuccess={handlePaymentSuccess}
+          onClose={() => setPaymentModal(null)}
+        />
       )}
     </>
   );

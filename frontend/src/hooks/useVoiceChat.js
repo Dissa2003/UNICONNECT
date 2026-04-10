@@ -120,7 +120,8 @@ export default function useVoiceChat({ room, currentUserId, enabled, onCallEnd }
 
       // Step 3: Announce ourselves to the voice socket room
       socket.emit('voice-room:join', { roomId: room.roomId });
-      setStatus(isInitiator ? 'waiting' : 'connecting');
+      // HOST waits for participant, PARTICIPANT waits for host's offer — both show 'waiting' lor
+      setStatus('waiting');
 
       // ── Factory: create a simple-peer instance ────────────────────────────
       // initiator=true → creates SDP offer (host does this)
@@ -174,21 +175,19 @@ export default function useVoiceChat({ room, currentUserId, enabled, onCallEnd }
         return p;
       };
 
-      // Host creates peer immediately as initiator — starts the offer process lah
-      if (isInitiator) {
-        setStatus('waiting');
-        peer = createPeer(true);
-      }
-
       // ── Incoming socket events ─────────────────────────────────────────────
 
-      // Other person joined — if we're the non-initiator, create our peer now lor
+      // voice-peer-ready fires in two cases lah:
+      //   A) We are already in the room → other person just joined → we are the HOST (initiator)
+      //      Only create peer NOW (not earlier) so signals go to someone, not empty room
+      //   B) We just joined → backend echoed this back → we are the PARTICIPANT (non-initiator)
+      //      Create peer(false) so we are ready to receive the host's offer lor
+      // Guard with peerRef.current check so we only create once sia (no double peers)
       socket.on('voice-peer-ready', ({ roomId }) => {
         if (roomId !== room.roomId) return;
+        if (peerRef.current) return; // Already created — ignore duplicate events lah
         setStatus('connecting');
-        if (!isInitiator) {
-          peer = createPeer(false);
-        }
+        peer = createPeer(isInitiator); // HOST → true (initiator), PARTICIPANT → false
       });
 
       // Relay incoming signal to the local peer — simple-peer handles it internally lah
@@ -265,9 +264,8 @@ export default function useVoiceChat({ room, currentUserId, enabled, onCallEnd }
 
   // ── End call — triggered by user clicking the End button lah ─────────────────
   const endCall = useCallback(async () => {
-    if (socketRef.current) {
-      socketRef.current.emit('voice-room:end', { roomId: room?.roomId });
-    }
+    // Don't emit voice-room:end here — the useEffect cleanup (cleanup(true)) does it lor
+    // Avoids the double-emit that happens when onCallEnd → setInCall(false) → cleanup fires
     // Update status in voice-room-service REST API lor
     const VOICE_REST_URL =
       process.env.REACT_APP_VOICE_SERVICE_URL || 'http://localhost:3002';
