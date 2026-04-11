@@ -14,15 +14,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import useVoiceChat from '../hooks/useVoiceChat';
-
-const VOICE_SERVICE_URL =
-  process.env.REACT_APP_VOICE_SERVICE_URL || 'http://localhost:3002';
+import api from '../services/api';
 
 export default function VoiceActionCenter({
   chatId,
   members = [],
   currentUserId,
-  currentUserEmail = '',
 }) {
   const [room, setRoom]           = useState(null);
   const [inCall, setInCall]       = useState(false);
@@ -44,12 +41,12 @@ export default function VoiceActionCenter({
     return () => clearInterval(id);
   }, []);
 
-  // Poll voice-room-service for any open room on this chat lor
+  // Fetch any active/scheduled room for this chat from the main backend
   const fetchRoom = useCallback(async () => {
     if (!chatId) return;
     try {
-      const res = await fetch(`${VOICE_SERVICE_URL}/api/voiceSync?chatId=${chatId}`);
-      setRoom(res.ok ? (await res.json()).room : null);
+      const { data } = await api.get(`/audio/active/${chatId}`);
+      setRoom(data.room ?? null);
     } catch {
       setRoom(null);
     }
@@ -107,28 +104,12 @@ export default function VoiceActionCenter({
 
     setScheduling(true);
     try {
-      const res = await fetch(`${VOICE_SERVICE_URL}/api/voiceSync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          chatId,
-          hostId: currentUserId,
-          participantId: String(selectedMember?.user?._id || selectedMember?.user || selectedMemberId),
-          hostEmail: currentUserEmail,
-          participantEmail: selectedMember?.user?.email || '',
-          scheduledTime,
-          startNow: startMode === 'now',
-        }),
+      const participantId = String(selectedMember?.user?._id || selectedMember?.user || selectedMemberId);
+      const { data } = await api.post('/audio/schedule', {
+        chatId,
+        participantId,
+        scheduledTime,
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setModalError(data.message || 'Something went wrong lor');
-        return;
-      }
 
       setRoom(data.room);
       setShowModal(false);
@@ -136,10 +117,10 @@ export default function VoiceActionCenter({
       setSelectedMemberId('');
       setStartMode('now');
 
-      // Immediate mode — jump straight into the call lah
+      // Immediate mode — jump straight into the call
       if (startMode === 'now') setInCall(true);
-    } catch {
-      setModalError('Cannot reach voice service lah — is it running on :3002?');
+    } catch (err) {
+      setModalError(err.response?.data?.message || 'Something went wrong, please try again');
     } finally {
       setScheduling(false);
     }
@@ -220,11 +201,9 @@ export default function VoiceActionCenter({
               <button
                 style={S.cancelRoomBtn}
                 onClick={async () => {
-                  await fetch(`${VOICE_SERVICE_URL}/api/voiceSync`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ roomId: room.roomId, status: 'ended' }),
-                  });
+                  try {
+                    await api.patch('/audio/status', { roomId: room.roomId, status: 'ended' });
+                  } catch { /* ignore */ }
                   setTimeout(fetchRoom, 300);
                 }}
               >
