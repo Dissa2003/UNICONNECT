@@ -27,8 +27,8 @@ router.post("/schedule", protect, async (req, res) => {
     }
 
     const scheduledDate = new Date(scheduledTime);
-    // Allow "Start Now" (within 10s of current time) or future scheduled times
-    if (isNaN(scheduledDate.getTime()) || scheduledDate < new Date(Date.now() - 10_000)) {
+    // Allow times up to 30s in the past to handle "Start Now" round-trip latency
+    if (isNaN(scheduledDate.getTime()) || scheduledDate < new Date(Date.now() - 30_000)) {
       return res.status(400).json({
         message: "scheduledTime must be a valid date",
       });
