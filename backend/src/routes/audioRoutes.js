@@ -51,7 +51,7 @@ router.post("/schedule", protect, async (req, res) => {
     const roomId = randomUUID();
 
     const room = await AudioRoom.create({
-      hostId: req.user._id,
+      hostId: req.user.id,
       participantId,
       chatId,
       roomId,
@@ -60,7 +60,7 @@ router.post("/schedule", protect, async (req, res) => {
 
     // ── Ping Vercel Reminder Service for BOTH users so they get email alerts lor ──
     // We don't block the response on this — fire and forget lah, reminder is best-effort
-    const host = await User.findById(req.user._id).select("email name");
+    const host = await User.findById(req.user.id).select("email name");
     const participant = await User.findById(participantId).select("email name");
 
     const reminderTitle = `Voice Call Reminder — UniConnect`;
@@ -132,11 +132,11 @@ router.get("/active/:chatId", protect, async (req, res) => {
       return res.status(404).json({ message: "No active room found for this chat lor" });
     }
 
-    // Make sure only the two participants can see this room — security check sia
-    const userId = String(req.user._id);
+    // Make sure only the two participants can see this room — security check
+    const userId = String(req.user.id);
     if (
-      String(room.hostId._id) !== userId &&
-      String(room.participantId._id) !== userId
+      String(room.hostId._id || room.hostId) !== userId &&
+      String(room.participantId._id || room.participantId) !== userId
     ) {
       return res.status(403).json({ message: "You are not part of this room lah" });
     }
@@ -172,8 +172,8 @@ router.patch("/status", protect, async (req, res) => {
       return res.status(404).json({ message: "Room not found lah" });
     }
 
-    // Only the host or participant can update status sia
-    const userId = String(req.user._id);
+    // Only the host or participant can update status
+    const userId = String(req.user.id);
     if (
       String(room.hostId) !== userId &&
       String(room.participantId) !== userId
