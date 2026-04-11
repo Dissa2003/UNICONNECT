@@ -91,7 +91,8 @@ export default function VoiceActionCenter({
 
     let scheduledTime;
     if (startMode === 'now') {
-      scheduledTime = new Date().toISOString();
+      // Send 5s in the future so the backend's "must be future date" check passes
+      scheduledTime = new Date(Date.now() + 5_000).toISOString();
     } else {
       if (!pickedTime) { setModalError('Pick a date and time lor'); return; }
       const chosen = new Date(pickedTime);
