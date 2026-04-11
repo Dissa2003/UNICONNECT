@@ -9,6 +9,12 @@ import { useTheme } from '../ThemeContext';
 import BreathingExercise from '../components/BreathingExercise';
 import MeditationTimer from '../components/MeditationTimer';
 import StressHistoryChart from '../components/StressHistoryChart';
+import JournalForm from '../components/journal/JournalForm';
+import JournalList from '../components/journal/JournalList';
+import CalendarFilter from '../components/journal/CalendarFilter';
+import JournalSummary from '../components/journal/JournalSummary';
+import { isSameDay, isSameMonth, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
+import '../styles/MoodJournal.css';
 import TodoList from '../components/TodoList';
 import MyDocs from '../components/MyDocs';
 import PaymentGateway from '../components/PaymentGateway';
@@ -77,6 +83,10 @@ export default function StudentDashboard(){
   const [breathingView, setBreathingView] = useState('exercise');  // null | 'video' | 'exercise'
   const [meditationView, setMeditationView] = useState(null); // null | 'video' | 'timer'
   const [relaxView, setRelaxView] = useState('breathing-exercise'); // 'breathing-exercise'|'breathing-video'|'meditation-timer'|'meditation-video'
+  const [journalEntries, setJournalEntries] = useState([]);
+  const [journalLoading, setJournalLoading] = useState(false);
+  const [filterMode, setFilterMode] = useState('day'); // 'day' | 'week' | 'month'
+  const [viewDate, setViewDate] = useState(new Date());
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const faceApiRef = useRef(null);
@@ -131,6 +141,47 @@ export default function StudentDashboard(){
       .catch(() => {})
       .finally(() => setHistoryLoading(false));
   }, [currentSection]);
+
+  // Fetch journal entries when mood-journal section is active
+  useEffect(() => {
+    if (currentSection !== 'mood-journal') return;
+    fetchJournalEntries();
+  }, [currentSection]);
+
+  const fetchJournalEntries = async () => {
+    setJournalLoading(true);
+    try {
+      const res = await api.get('/journal');
+      setJournalEntries(res.data.data || []);
+    } catch (err) {
+      console.error('Failed to fetch journal entries', err);
+      showToast('Could not load journal entries', true);
+    } finally {
+      setJournalLoading(false);
+    }
+  };
+
+  const handleAddJournalEntry = async (moodText) => {
+    try {
+      const res = await api.post('/journal', { moodText });
+      const { data } = res.data;
+      setJournalEntries([data, ...journalEntries]);
+      showToast('Mood journal updated ✨');
+    } catch (err) {
+      showToast('Failed to save journal entry', true);
+      throw err;
+    }
+  };
+
+  const handleDeleteJournalEntry = async (id) => {
+    try {
+      await api.delete(`/journal/${id}`);
+      setJournalEntries(journalEntries.filter(entry => entry._id !== id));
+      showToast('Entry removed');
+    } catch (err) {
+      showToast('Failed to delete entry', true);
+    }
+  };
 
   // when profile first arrives (has an _id) fetch only group request list
   const hasFetchedGroupRequestsRef = useRef(false);
@@ -754,7 +805,7 @@ export default function StudentDashboard(){
           </div>
 
           <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:pal.textDim,padding:'0.8rem 0.5rem 0.3rem'}}>Profile Sections</div>
-          {['overview','academic','subjects','goals','learning','interests','availability','bookTutor','wellness','todos','mydocs'].map(s => (
+          {['overview','academic','subjects','goals','learning','interests','availability','bookTutor','wellness', 'mood-journal', 'todos', 'mydocs'].map(s => (
             <div key={s} onClick={() => setCurrentSection(s)} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection===s?pal.sectionKey:pal.sectionInactive,cursor:'pointer',transition:'all 0.2s',background:currentSection===s?'rgba(26,107,255,.12)':'transparent',border:currentSection===s?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
               <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection===s?'#1A6BFF':pal.dot,flexShrink:0,transition:'all 0.2s'}}></span>
               <span style={{fontSize:'1rem',width:'20px',textAlign:'center',flexShrink:0}}>{getIcon(s)}</span>
@@ -795,6 +846,63 @@ export default function StudentDashboard(){
           {currentSection === 'bookTutor' && renderBookTutor()}
           {currentSection === 'matching' && renderMatching()}
           {currentSection === 'wellness' && renderWellness()}
+          {currentSection === 'mood-journal' && (
+            <div className="journal-outer-container">
+              <div className="journal-header">
+                <h2>The Mood Journal</h2>
+                <p>A secure space for your private reflections and intelligent stress insights.</p>
+              </div>
+
+              <div className="journal-main-grid">
+                <aside className="journal-sidebar">
+                  <CalendarFilter 
+                    selectedDate={viewDate} 
+                    mode={filterMode} 
+                    onDateChange={setViewDate} 
+                    onModeChange={setFilterMode} 
+                  />
+                  <JournalSummary 
+                    entries={journalEntries.filter(entry => {
+                      const d = new Date(entry.createdAt);
+                      if (filterMode === 'day') return isSameDay(d, viewDate);
+                      if (filterMode === 'month') return isSameMonth(d, viewDate);
+                      if (filterMode === 'week') {
+                        return isWithinInterval(d, {
+                          start: startOfWeek(viewDate, { weekStartsOn: 1 }),
+                          end: endOfWeek(viewDate, { weekStartsOn: 1 })
+                        });
+                      }
+                      return true;
+                    })}
+                    mode={filterMode}
+                    selectedDate={viewDate}
+                  />
+                </aside>
+
+                <div className="journal-content-area">
+                  <JournalForm onEntryAdded={handleAddJournalEntry} />
+                  <div className="journal-list-section">
+                    <JournalList 
+                      entries={journalEntries.filter(entry => {
+                        const d = new Date(entry.createdAt);
+                        if (filterMode === 'day') return isSameDay(d, viewDate);
+                        if (filterMode === 'month') return isSameMonth(d, viewDate);
+                        if (filterMode === 'week') {
+                          return isWithinInterval(d, {
+                            start: startOfWeek(viewDate, { weekStartsOn: 1 }),
+                            end: endOfWeek(viewDate, { weekStartsOn: 1 })
+                          });
+                        }
+                        return true;
+                      })} 
+                      loading={journalLoading} 
+                      onDelete={handleDeleteJournalEntry} 
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {currentSection === 'todos' && <TodoList pal={pal} isDk={isDk} />}
           {currentSection === 'mydocs' && <MyDocs pal={pal} isDk={isDk} />}
         </main>
@@ -2091,7 +2199,7 @@ const StatCard = ({label, value}) => (
 );
 
 function getIcon(section) {
-  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅', bookTutor:'👨‍🏫', wellness:'💆', todos:'📝', mydocs:'📂'};
+  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅', bookTutor:'👨‍🏫', wellness:'💆', 'mood-journal': '📒', todos:'📝', mydocs:'📂'};
   return icons[section] || '⚙';
 }
 
