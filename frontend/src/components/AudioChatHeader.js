@@ -45,12 +45,12 @@ export default function AudioChatHeader({ chatId, participantId, onJoinCall }) {
   const handleSchedule = async () => {
     setError('');
     if (!pickedTime) {
-      setError('Pick a date and time lah');
+      setError('Please pick a date and time');
       return;
     }
     const chosen = new Date(pickedTime);
     if (chosen <= new Date()) {
-      setError('Must be a future time lor');
+      setError('Must be a future time');
       return;
     }
 
@@ -65,7 +65,7 @@ export default function AudioChatHeader({ chatId, participantId, onJoinCall }) {
       setShowModal(false);
       setPickedTime('');
     } catch (err) {
-      setError(err.response?.data?.message || 'Something went wrong lah');
+      setError(err.response?.data?.message || 'Something went wrong, please try again');
     } finally {
       setScheduling(false);
     }

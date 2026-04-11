@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import api from '../services/api';
 import { useTheme } from '../ThemeContext';
+import AudioChatHeader from '../components/AudioChatHeader';
+import VoiceCallOverlay from '../components/VoiceCallOverlay';
 
 const SOCKET_URL = 'http://localhost:5000';
 
@@ -21,6 +23,7 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
   const [botTyping, setBotTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [activeCall, setActiveCall] = useState(null); // room object when in a voice call
   const isTutorTheme = theme === 'tutor';
   const { theme: globalTheme } = useTheme();
   const isLight = isTutorTheme || globalTheme === 'light';
@@ -589,6 +592,15 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
           </div>
         ) : (
           <>
+            {/* Voice call overlay — full screen when a call is active */}
+            {activeCall && (
+              <VoiceCallOverlay
+                room={activeCall}
+                currentUserId={currentUserId.current}
+                onClose={() => setActiveCall(null)}
+              />
+            )}
+
             {/* Chat header */}
             <div style={styles.chatHeader}>
               <button type="button" onClick={() => setSidebarOpen(!sidebarOpen)} style={styles.hamburger}>☰</button>
@@ -600,6 +612,21 @@ export default function StudyRoom({ initialGroupId = '', hideReferenceFlow = fal
                 👥 Members
               </button>
             </div>
+
+            {/* Voice call scheduler — only shown for 1-to-1 chats (2 members) */}
+            {members.length === 2 && (() => {
+              const otherMember = members.find(
+                (m) => String(m.user?._id || m.user) !== String(currentUserId.current)
+              );
+              const otherId = otherMember?.user?._id || otherMember?.user;
+              return otherId ? (
+                <AudioChatHeader
+                  chatId={activeGroup}
+                  participantId={String(otherId)}
+                  onJoinCall={(room) => setActiveCall(room)}
+                />
+              ) : null;
+            })()}
 
             {/* Members panel */}
             {membersOpen && (
