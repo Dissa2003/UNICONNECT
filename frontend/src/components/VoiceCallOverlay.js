@@ -92,8 +92,10 @@ export default function VoiceCallOverlay({ room, currentUserId, onClose }) {
         // Step 3: Tell the backend/socket that we joined this voice room lah
         socket.emit('join-voice-room', { roomId: room.roomId });
 
-        // Step 4: When the other peer joins, the NON-initiator gets 'voice-peer-joined'
-        // Both sides call createPeer() but only the initiator (host) creates the offer lor
+        // Step 4: Create WebRTC peer connection
+        // Non-initiator creates peer immediately so it's ready to receive the offer.
+        // Host (initiator) waits until it gets 'voice-peer-joined' confirming the
+        // other side is listening — this prevents the offer from firing into the void.
         const createPeer = (initiator) => {
           const p = new Peer({
             initiator,
@@ -114,22 +116,24 @@ export default function VoiceCallOverlay({ room, currentUserId, onClose }) {
             api.patch('/audio/status', { roomId: room.roomId, status: 'active' }).catch(() => {});
           });
 
-          // When we get the remote audio stream, plug it into an Audio element lah
+          // When we get the remote audio stream, plug it into an Audio element
           p.on('stream', (remoteStream) => {
             const audio = document.createElement('audio');
             audio.srcObject = remoteStream;
             audio.autoplay = true;
             audio.playsInline = true;
             document.body.appendChild(audio);
+            // Explicit play() call handles browsers that block autoplay
+            audio.play().catch(() => {});
 
-            // Monitor remote audio level for their pulse indicator sia
+            // Monitor remote audio level for their pulse indicator
             cleanupRemoteMeter = startAudioMeter(remoteStream, setRemoteSpeaking);
 
-            // Clean up audio element when component unmounts lor
+            // Clean up audio element when component unmounts
             p.on('close', () => {
               audio.pause();
               audio.srcObject = null;
-              document.body.removeChild(audio);
+              if (document.body.contains(audio)) document.body.removeChild(audio);
             });
           });
 
@@ -143,17 +147,22 @@ export default function VoiceCallOverlay({ room, currentUserId, onClose }) {
         };
 
         if (isInitiator) {
-          // Host creates the peer immediately and waits for the other person to join lor
+          // Host waits — do NOT create peer yet.
+          // The offer must only fire after the non-initiator is in the room and listening.
           setStatus('Waiting for other person...');
-          peer = createPeer(true);
+        } else {
+          // Non-initiator creates peer immediately so it's ready to receive the offer.
+          peer = createPeer(false);
+          setStatus('Joining call...');
         }
 
-        // When the non-initiator joins, host already has a peer — non-initiator creates theirs lah
+        // voice-peer-joined fires on the HOST when the non-initiator joins the room.
+        // This is the correct moment for the host to create its peer and send the offer.
         socket.on('voice-peer-joined', ({ roomId }) => {
           if (roomId !== room.roomId) return;
-          if (!isInitiator) {
-            // Non-initiator: now create the peer in answer mode sia
-            peer = createPeer(false);
+          if (isInitiator && (!peerRef.current || peerRef.current.destroyed)) {
+            // Non-initiator is now listening — safe to generate and send the offer
+            peer = createPeer(true);
           }
           setStatus('Other person joined, establishing...');
         });
