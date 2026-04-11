@@ -209,12 +209,21 @@ function initSocket(httpServer) {
     // event naming convention so frontend hook works against main backend lor
     socket.on("voice-room:join", ({ roomId }) => {
       if (!roomId) return;
+      // Check existing members BEFORE joining lor
+      const existingMembers = io.sockets.adapter.rooms.get(`voice:${roomId}`);
+      const roomHasOthers = existingMembers && existingMembers.size > 0;
       socket.join(`voice:${roomId}`);
       console.log(`🎙️  ${socket.userId} joined voice:${roomId}`);
+      // Notify existing members that a new peer is ready lah
       socket.to(`voice:${roomId}`).emit("voice-peer-ready", {
         peerId: socket.userId,
         roomId,
       });
+      // Also echo back to the joining socket if others were already there lor
+      // This lets the non-initiator know the host is present and create their peer
+      if (roomHasOthers) {
+        socket.emit("voice-peer-ready", { peerId: socket.userId, roomId });
+      }
     });
 
     socket.on("voice-room:signal", ({ roomId, signalData }) => {
