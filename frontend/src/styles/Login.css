@@ -159,13 +159,14 @@ body::before {
 /* ── Right Panel ── */
 .right {
     display:flex; flex-direction:column;
-    align-items:center; justify-content:center;
+    align-items:center;
     padding:3rem 4rem;
     overflow-y:auto;
 }
 
 .form-box {
     width:100%; max-width:420px;
+    margin: auto 0;
     animation:fadeUp .8s .1s cubic-bezier(.16,1,.3,1) both;
 }
 @keyframes fadeUp{from{opacity:0;transform:translateY(28px)}}
