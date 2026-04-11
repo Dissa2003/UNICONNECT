@@ -7,7 +7,7 @@ const cors = require("cors");
 const connectDB = require("./config/db");
 const { initSocket } = require("./socket");
 
-let profileRoutes, matchRoutes, tutorProfileRoutes, studyRoomRoutes, tutorBookingRoutes, stressRoutes, journalRoutes;
+let profileRoutes, matchRoutes, tutorProfileRoutes, studyRoomRoutes, tutorBookingRoutes, stressRoutes, journalRoutes, todoRoutes, docRoutes;
 
 try {
   profileRoutes = require("./routes/profileRoutes");
@@ -58,6 +58,20 @@ try {
   console.error("✗ Error loading journalRoutes:", err.message);
 }
 
+try {
+  todoRoutes = require("./routes/todoRoutes");
+  console.log("✓ todoRoutes loaded");
+} catch (err) {
+  console.error("✗ Error loading todoRoutes:", err.message);
+}
+
+try {
+  docRoutes = require("./routes/docRoutes");
+  console.log("✓ docRoutes loaded");
+} catch (err) {
+  console.error("✗ Error loading docRoutes:", err.message);
+}
+
 const app = express();
 const server = http.createServer(app);
 
@@ -95,12 +109,37 @@ if (tutorBookingRoutes) {
   app.use("/api/tutor-bookings", tutorBookingRoutes);
 }
 
+try {
+  const paymentRoutes = require("./routes/paymentRoutes");
+  app.use("/api/payments", paymentRoutes);
+  console.log("✓ paymentRoutes loaded");
+} catch (err) {
+  console.error("✗ Error loading paymentRoutes:", err.message);
+}
+
 if (stressRoutes) {
   app.use("/api/stress", stressRoutes);
 }
 
 if (journalRoutes) {
   app.use("/api/journal", journalRoutes);
+}
+
+if (todoRoutes) {
+  app.use("/api/todos", todoRoutes);
+}
+
+if (docRoutes) {
+  app.use("/api/docs", docRoutes);
+}
+
+// Audio room scheduling and status routes
+try {
+  const audioRoutes = require("./routes/audioRoutes");
+  app.use("/api/audio", audioRoutes);
+  console.log("✓ audioRoutes loaded");
+} catch (err) {
+  console.error("✗ Error loading audioRoutes:", err.message);
 }
 
 server.listen(5000, async () => {

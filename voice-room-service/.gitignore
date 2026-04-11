@@ -1,0 +1,26 @@
+# Don't commit secrets lah! Very important hor.
+.env
+.env.local
+.env.*.local
+
+# Contains plaintext secrets — never commit this
+set-env.js
+
+# Node modules - no need push, can install anytime lor
+node_modules/
+
+# Vercel build output
+.vercel/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor folders
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+.vercel

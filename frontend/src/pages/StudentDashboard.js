@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import api from '../services/api';
 import { useTheme } from '../ThemeContext';
 import BreathingExercise from '../components/BreathingExercise';
@@ -14,6 +15,9 @@ import CalendarFilter from '../components/journal/CalendarFilter';
 import JournalSummary from '../components/journal/JournalSummary';
 import { isSameDay, isSameMonth, isWithinInterval, startOfWeek, endOfWeek } from 'date-fns';
 import '../styles/MoodJournal.css';
+import TodoList from '../components/TodoList';
+import MyDocs from '../components/MyDocs';
+import PaymentGateway from '../components/PaymentGateway';
 
 const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
@@ -47,6 +51,7 @@ export default function StudentDashboard(){
   const [tutorMatches, setTutorMatches] = useState([]);
   const [findingTutors, setFindingTutors] = useState(false);
   const [bookingTutorIds, setBookingTutorIds] = useState({});
+  const [paymentModal, setPaymentModal] = useState(null); // { matchItem } | null
   const [selectedMatchIds, setSelectedMatchIds] = useState([]);
   const [groupRequests, setGroupRequests] = useState([]);
   const [detailsPopup, setDetailsPopup] = useState({ show: false, invitee: null, request: null });
@@ -86,6 +91,9 @@ export default function StudentDashboard(){
   const streamRef = useRef(null);
   const faceApiRef = useRef(null);
   const modelsLoadedRef = useRef(false);
+  const reminderSocketRef = useRef(null);
+  const [reminderNotifs, setReminderNotifs] = useState([]); // [{_id, title, description, dueDate}]
+  const [todosBadge, setTodosBadge] = useState(0);
 
   // Body background / color — mirrors what TutorNav.js does on tutor pages
   useEffect(() => {
@@ -98,6 +106,19 @@ export default function StudentDashboard(){
       document.body.style.color      = prevColor;
     };
   }, [theme]);
+
+  // Connect socket for live reminder notifications
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const socket = io('http://localhost:5000', { auth: { token }, transports: ['websocket'] });
+    reminderSocketRef.current = socket;
+    socket.on('reminder-alert', (todo) => {
+      setReminderNotifs(prev => [todo, ...prev]);
+      setTodosBadge(n => n + 1);
+    });
+    return () => { socket.disconnect(); };
+  }, []);
 
   // Load profile and face status on mount
   useEffect(() => {
@@ -443,32 +464,53 @@ export default function StudentDashboard(){
     }
   };
 
-  const bookTutor = async (matchItem) => {
+  const bookTutor = (matchItem) => {
     const tutorProfileId = matchItem?.tutor?._id;
     if (!tutorProfileId) {
       showToast('Unable to book this tutor right now', true);
       return;
     }
 
+    const isFree = matchItem?.tutor?.isFree || Number(matchItem?.tutor?.hourlyRate || 0) === 0;
+
+    if (isFree) {
+      // Free tutor — book directly without payment
+      bookFreetutor(matchItem);
+    } else {
+      // Paid tutor — open payment gateway
+      setPaymentModal({ matchItem });
+    }
+  };
+
+  const bookFreetutor = async (matchItem) => {
+    const tutorProfileId = matchItem?.tutor?._id;
     try {
       setBookingTutorIds((prev) => ({ ...prev, [tutorProfileId]: true }));
       await api.post('/tutor-bookings', {
         studentProfileId: profile._id,
         tutorProfileId,
         subject: tutorQuery.subject,
-        maxBudget: Number(tutorQuery.maxBudget),
+        maxBudget: 0,
         learningStyle: tutorQuery.learningStyle,
         language: tutorQuery.language,
         requestedAvailability: tutorQuery.availability,
         matchScore: matchItem.score || 0,
         reasons: matchItem.reasons || [],
       });
-
       showToast('Tutor booking request sent');
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to send booking request', true);
       setBookingTutorIds((prev) => ({ ...prev, [tutorProfileId]: false }));
     }
+  };
+
+  const handlePaymentSuccess = (result) => {
+    const tutorProfileId = paymentModal?.matchItem?.tutor?._id;
+    if (tutorProfileId) {
+      setBookingTutorIds((prev) => ({ ...prev, [tutorProfileId]: true }));
+    }
+    setPaymentModal(null);
+    showToast('Payment successful — booking request sent!');
   };
 
   const toggleMatchSelection = (studentProfileId) => {
@@ -730,10 +772,10 @@ export default function StudentDashboard(){
     <>
       <style>{getStyles(theme)}</style>
       
-      <div className="cur" id="cO" style={{position:'fixed',top:0,left:0,zIndex:9999,pointerEvents:'none'}}>
+      <div className="cur" id="cO" style={{position:'fixed',top:0,left:0,zIndex:99999,pointerEvents:'none'}}>
         <div className="cur-ring" style={{width:'34px',height:'34px',border:'1.5px solid #1A6BFF',borderRadius:'50%',transform:'translate(-50%,-50%)',opacity:0.65,transition:'all 0.25s'}}></div>
       </div>
-      <div className="cur" id="cI" style={{position:'fixed',top:0,left:0,zIndex:9999,pointerEvents:'none'}}>
+      <div className="cur" id="cI" style={{position:'fixed',top:0,left:0,zIndex:99999,pointerEvents:'none'}}>
         <div className="cur-dot" style={{width:'8px',height:'8px',borderRadius:'50%',background:'#00E5C3',transform:'translate(-50%,-50%)'}}></div>
       </div>
 
@@ -763,11 +805,14 @@ export default function StudentDashboard(){
           </div>
 
           <div style={{fontSize:'0.68rem',fontWeight:600,letterSpacing:'0.1em',textTransform:'uppercase',color:pal.textDim,padding:'0.8rem 0.5rem 0.3rem'}}>Profile Sections</div>
-          {['overview','academic','subjects','goals','learning','interests','availability','bookTutor','wellness', 'mood-journal'].map(s => (
+          {['overview','academic','subjects','goals','learning','interests','availability','bookTutor','wellness', 'mood-journal', 'todos', 'mydocs'].map(s => (
             <div key={s} onClick={() => setCurrentSection(s)} style={{display:'flex',alignItems:'center',gap:'0.7rem',padding:'0.65rem 0.8rem',borderRadius:'10px',fontSize:'0.85rem',color:currentSection===s?pal.sectionKey:pal.sectionInactive,cursor:'pointer',transition:'all 0.2s',background:currentSection===s?'rgba(26,107,255,.12)':'transparent',border:currentSection===s?'1px solid rgba(26,107,255,.2)':'1px solid transparent'}}>
               <span style={{width:'6px',height:'6px',borderRadius:'50%',background:currentSection===s?'#1A6BFF':pal.dot,flexShrink:0,transition:'all 0.2s'}}></span>
               <span style={{fontSize:'1rem',width:'20px',textAlign:'center',flexShrink:0}}>{getIcon(s)}</span>
-              {s.charAt(0).toUpperCase() + s.slice(1)}
+              {s === 'todos' ? 'To-Do List' : s === 'mydocs' ? 'My Docs' : s.charAt(0).toUpperCase() + s.slice(1)}
+              {s === 'todos' && todosBadge > 0 && (
+                <span onClick={e => { e.stopPropagation(); setTodosBadge(0); }} style={{marginLeft:'auto',fontSize:'0.65rem',fontWeight:700,padding:'0.1rem 0.5rem',borderRadius:'99px',background:'rgba(179,136,255,.2)',color:'#B388FF',cursor:'pointer'}}>{todosBadge}</span>
+              )}
             </div>
           ))}
           
@@ -858,12 +903,31 @@ export default function StudentDashboard(){
               </div>
             </div>
           )}
+          {currentSection === 'todos' && <TodoList pal={pal} isDk={isDk} />}
+          {currentSection === 'mydocs' && <MyDocs pal={pal} isDk={isDk} />}
         </main>
       </div>
 
       {toast.show && (
         <div style={{position:'fixed',bottom:'2rem',right:'2rem',zIndex:999,padding:'0.85rem 1.4rem',borderRadius:'12px',background:toast.isError?'rgba(255,82,114,.1)':'rgba(0,229,195,.12)',border:toast.isError?'1px solid rgba(255,82,114,.25)':'1px solid rgba(0,229,195,.25)',color:toast.isError?'#FF5272':'#00E5C3',fontSize:'0.85rem',fontWeight:500,display:'flex',alignItems:'center',gap:'0.6rem'}}>
           ✓ {toast.msg}
+        </div>
+      )}
+
+      {/* Reminder notifications stack */}
+      {reminderNotifs.length > 0 && (
+        <div style={{position:'fixed',top:'5rem',right:'1.5rem',zIndex:1500,display:'flex',flexDirection:'column',gap:'0.6rem',maxWidth:'340px',width:'100%'}}>
+          {reminderNotifs.map((n, i) => (
+            <div key={n._id + i} style={{background:isDk?'#12182B':'#fff',border:'1px solid rgba(179,136,255,.45)',borderLeft:'4px solid #B388FF',borderRadius:'12px',padding:'0.9rem 1rem',boxShadow:'0 8px 28px rgba(0,0,0,.3)',display:'flex',gap:'0.8rem',alignItems:'flex-start'}}>
+              <span style={{fontSize:'1.4rem',flexShrink:0}}>🔔</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:'0.85rem',color:isDk?'#fff':'#0d1b3e',marginBottom:'0.2rem'}}>Reminder: {n.title}</div>
+                {n.description && <div style={{fontSize:'0.75rem',color:isDk?'rgba(255,255,255,.55)':'#5a6a8a',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{n.description}</div>}
+                {n.dueDate && <div style={{fontSize:'0.72rem',color:'#B388FF',marginTop:'0.2rem'}}>Due: {new Date(n.dueDate).toLocaleString()}</div>}
+              </div>
+              <button onClick={() => setReminderNotifs(prev => prev.filter((_, idx) => idx !== i))} style={{background:'none',border:'none',color:isDk?'rgba(255,255,255,.4)':'#a0abc4',cursor:'pointer',fontSize:'1rem',lineHeight:1,padding:'0',flexShrink:0}}>✕</button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -966,6 +1030,24 @@ export default function StudentDashboard(){
             </div>
           </div>
         </div>
+      )}
+
+      {/* Payment Gateway Modal */}
+      {paymentModal && (
+        <PaymentGateway
+          tutor={paymentModal.matchItem}
+          bookingData={{
+            studentProfileId: profile._id,
+            subject: tutorQuery.subject,
+            learningStyle: tutorQuery.learningStyle,
+            language: tutorQuery.language,
+            availability: tutorQuery.availability,
+            matchScore: paymentModal.matchItem?.score || 0,
+            reasons: paymentModal.matchItem?.reasons || [],
+          }}
+          onSuccess={handlePaymentSuccess}
+          onClose={() => setPaymentModal(null)}
+        />
       )}
     </>
   );
@@ -2117,7 +2199,7 @@ const StatCard = ({label, value}) => (
 );
 
 function getIcon(section) {
-  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅', bookTutor:'👨‍🏫', wellness:'💆', 'mood-journal': '📒'};
+  const icons = {overview:'🏠', academic:'🎓', subjects:'📚', goals:'🎯', learning:'🧠', interests:'⭐', availability:'📅', bookTutor:'👨‍🏫', wellness:'💆', 'mood-journal': '📒', todos:'📝', mydocs:'📂'};
   return icons[section] || '⚙';
 }
 
