@@ -1,3 +1,15 @@
+/**
+ * StressHistoryChart Component
+ * 
+ * This component visualizes the user's stress history using Recharts.
+ * It provides a Line chart for chronological scores, a List view for details,
+ * and a Pie chart for stress level distribution.
+ * 
+ * Props:
+ * - records: Array of stress history records.
+ * - pal: Color palette for theming.
+ * - onClearHistory: Callback function to clear the history.
+ */
 import React, { useState, useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -100,12 +112,13 @@ export default function StressHistoryChart({ records = [], pal, onClearHistory }
   // Chart data (oldest → newest)
   const chartData = useMemo(() => [...filtered].reverse(), [filtered]);
 
-  // Stats
+  // Calculate average score across the currently filtered records
   const avgScore = useMemo(() => {
     if (!filtered.length) return 0;
     return Math.round(filtered.reduce((s, r) => s + r.score, 0) / filtered.length);
   }, [filtered]);
 
+  // Find the record with the highest stress score
   const highestRecord = useMemo(() => {
     if (!filtered.length) return null;
     return filtered.reduce((max, r) => r.score > max.score ? r : max, filtered[0]);
