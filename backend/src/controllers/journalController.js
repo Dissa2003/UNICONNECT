@@ -1,13 +1,24 @@
+/**
+ * Journal Controller
+ * 
+ * Handles the business logic for mood journal operations:
+ * creating entries with smart stress detection, retrieving entries,
+ * and deleting entries.
+ */
 const MoodJournal = require('../models/MoodJournal');
 
 /**
- * @desc    Helper to detect stress level based on keywords
- * @param   {string} text 
- * @returns {string} LOW | MEDIUM | HIGH
+ * detectStress (Helper Function)
+ * 
+ * Parses the provided text for specific keywords to determine the user's stress level.
+ * 
+ * @param   {string} text - The user's journal entry text.
+ * @returns {string} The detected stress level: 'LOW', 'MEDIUM', or 'HIGH'.
  */
 const detectStress = (text) => {
   const content = text.toLowerCase();
   
+  // Define keyword sets for different stress intensities
   const highKeywords = ['stressed', 'anxious', 'depressed', 'overwhelmed', 'panic', 'can\'t cope', 'exhausted'];
   const mediumKeywords = ['tired', 'busy', 'pressure', 'exams', 'deadline', 'worried', 'stress'];
   const lowKeywords = ['happy', 'relaxed', 'calm', 'good', 'great', 'fine'];
