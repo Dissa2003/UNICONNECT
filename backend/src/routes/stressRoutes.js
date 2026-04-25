@@ -1,3 +1,10 @@
+/**
+ * Stress Routes
+ * 
+ * Defines the API endpoints for the ML-powered stress prediction and history tracking.
+ * Includes routes for predicting stress levels from a 20-question survey,
+ * and retrieving/clearing the authenticated user's stress history.
+ */
 const express = require('express');
 const router = express.Router();
 const { predictStressLevel } = require('../../stress_detector/predictor');
@@ -5,9 +12,14 @@ const { protect } = require('../middleware/authMiddleware');
 const StressHistory = require('../models/StressHistory');
 
 /**
- * Derive a 0-100 stress score from the 20 questionnaire answers.
- * Positive factors  → higher value = more stress
- * Protective factors → higher value = less stress (inverted)
+ * Helper Function: computeStressScore
+ * 
+ * Derives a 0-100 stress score from the 20 questionnaire answers.
+ * - Positive factors (e.g., anxiety, workload): Higher value = more stress.
+ * - Protective factors (e.g., sleep, social support): Higher value = less stress (inverted).
+ * 
+ * @param {Array<number>} a - Array of 20 numerical answers.
+ * @returns {number} A calculated score between 0 and 100.
  */
 function computeStressScore(a) {
     const positive = [
@@ -41,7 +53,9 @@ function computeStressScore(a) {
     return Math.round(Math.min(100, Math.max(0, raw * 100)));
 }
 
-// POST /api/stress/predict  (auth optional – saves record when token present)
+// POST /api/stress/predict
+// Predicts stress level based on 20 survey answers.
+// Authentication is optional: if a valid token is provided, the record is saved to history.
 router.post('/predict', async (req, res) => {
     try {
         const { answers } = req.body;
@@ -90,7 +104,8 @@ router.post('/predict', async (req, res) => {
     }
 });
 
-// GET /api/stress/history  – returns the authenticated user's stress records (newest first)
+// GET /api/stress/history
+// Retrieves the authenticated user's stress history records, sorted newest first.
 router.get('/history', protect, async (req, res) => {
     try {
         const records = await StressHistory
@@ -103,7 +118,8 @@ router.get('/history', protect, async (req, res) => {
     }
 });
 
-// DELETE /api/stress/history  – clears the authenticated user's history
+// DELETE /api/stress/history
+// Clears all stress history records for the authenticated user.
 router.delete('/history', protect, async (req, res) => {
     try {
         await StressHistory.deleteMany({ userId: req.user.id });

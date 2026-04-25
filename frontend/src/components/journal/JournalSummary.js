@@ -1,12 +1,25 @@
+/**
+ * JournalSummary Component
+ * 
+ * Displays aggregate statistics for the user's mood journal entries within
+ * the selected time period. Shows counts of High, Medium, and Low stress levels.
+ * 
+ * Props:
+ * - entries: Array of journal entry objects for the current time period.
+ * - mode: The current calendar view mode ('day', 'week', 'month').
+ * - selectedDate: The currently selected date to derive the month/year label.
+ */
 import React from 'react';
 
 export default function JournalSummary({ entries, mode, selectedDate }) {
+  // Calculate the total number of entries for each stress level
   const stats = {
     high: entries.filter(e => e.stressLevel === 'HIGH').length,
     medium: entries.filter(e => e.stressLevel === 'MEDIUM').length,
     low: entries.filter(e => e.stressLevel === 'LOW').length,
   };
 
+  // Helper function to generate a dynamic title based on the selected mode
   const getTimeLabel = () => {
     if (mode === 'day') return 'Today';
     if (mode === 'week') return 'This Week';
