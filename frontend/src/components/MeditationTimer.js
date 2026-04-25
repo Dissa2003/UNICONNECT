@@ -1,3 +1,13 @@
+/**
+ * MeditationTimer Component
+ * 
+ * Provides a customizable countdown timer for meditation sessions.
+ * Features a circular SVG progress ring and supports different duration presets.
+ * Helps users track their wellness activities.
+ * 
+ * Props:
+ * - pal: The color palette object for styling.
+ */
 import React, { useState, useEffect, useRef } from 'react';
 
 const DURATIONS = [
@@ -13,10 +23,16 @@ function formatTime(secs) {
 }
 
 export default function MeditationTimer({ pal }) {
+  // Currently selected meditation duration (in seconds)
   const [selected, setSelected]   = useState(DURATIONS[0].seconds);
+  
+  // Remaining time for the current active session
   const [remaining, setRemaining] = useState(DURATIONS[0].seconds);
-  // status: 'idle' | 'running' | 'paused' | 'done'
+  
+  // Current status of the timer: 'idle' | 'running' | 'paused' | 'done'
   const [status, setStatus] = useState('idle');
+  
+  // Ref to hold the interval ID for clearing the timer
   const tickRef = useRef(null);
 
   const selectDuration = (secs) => {
@@ -35,21 +51,26 @@ export default function MeditationTimer({ pal }) {
     setRemaining(selected);
   };
 
+  // Effect to manage the countdown timer
   useEffect(() => {
     if (status === 'running') {
       tickRef.current = setInterval(() => {
         setRemaining(prev => {
+          // If time is up, clear interval and set status to done
           if (prev <= 1) {
             clearInterval(tickRef.current);
             setStatus('done');
             return 0;
           }
-          return prev - 1;
+          return prev - 1; // Decrement remaining time by 1 second
         });
       }, 1000);
     } else {
+      // Clear interval if not running (e.g., paused or idle)
       clearInterval(tickRef.current);
     }
+    
+    // Cleanup interval on unmount
     return () => clearInterval(tickRef.current);
   }, [status]);
 

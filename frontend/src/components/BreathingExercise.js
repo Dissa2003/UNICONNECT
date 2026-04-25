@@ -1,3 +1,13 @@
+/**
+ * BreathingExercise Component
+ * 
+ * This component provides an interactive 4-4-4 breathing exercise (Inhale, Hold, Exhale)
+ * to help users manage stress and anxiety. It uses a growing and shrinking circular
+ * animation to guide the user's breathing pace.
+ * 
+ * Props:
+ * - pal: The color palette object for consistent UI styling.
+ */
 import React, { useState, useEffect, useRef } from 'react';
 
 const STEPS = [
@@ -7,9 +17,16 @@ const STEPS = [
 ];
 
 export default function BreathingExercise({ pal }) {
+  // State to track if the exercise is currently running
   const [active, setActive] = useState(false);
+  
+  // Tracks the current step index (0: Inhale, 1: Hold, 2: Exhale)
   const [stepIdx, setStepIdx] = useState(0);
+  
+  // Tracks the countdown timer for the current step
   const [countdown, setCountdown] = useState(STEPS[0].duration);
+  
+  // Ref to hold the interval ID for the timer, allowing us to clear it when stopped
   const tickRef = useRef(null);
 
   const stop = () => {
@@ -26,13 +43,17 @@ export default function BreathingExercise({ pal }) {
   };
 
   useEffect(() => {
+    // If not active, do not start the timer
     if (!active) return;
 
     let currentStep = 0;
     let currentCount = STEPS[0].duration;
 
+    // Set up an interval that ticks every second
     tickRef.current = setInterval(() => {
       currentCount -= 1;
+      
+      // When the countdown reaches 0, transition to the next breathing step
       if (currentCount <= 0) {
         currentStep = (currentStep + 1) % STEPS.length;
         currentCount = STEPS[currentStep].duration;
@@ -41,6 +62,7 @@ export default function BreathingExercise({ pal }) {
       setCountdown(currentCount);
     }, 1000);
 
+    // Cleanup function to clear the interval when the component unmounts or active state changes
     return () => clearInterval(tickRef.current);
   }, [active]);
 
