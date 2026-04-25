@@ -1,6 +1,18 @@
+/**
+ * JournalItem Component
+ * 
+ * Displays a single mood journal entry card.
+ * Shows the user's reflection text, the dynamically detected stress level badge,
+ * the feedback message, and the timestamp. Includes a delete button.
+ * 
+ * Props:
+ * - entry: The journal entry object containing moodText, stressLevel, message, and createdAt.
+ * - onDelete: Callback function triggered when the user attempts to delete the entry.
+ */
 import React from 'react';
 
 export default function JournalItem({ entry, onDelete }) {
+  // Helper function to format the ISO date string into a human-readable format
   const formatDate = (dateString) => {
     const options = { 
       weekday: 'short', 
@@ -13,7 +25,9 @@ export default function JournalItem({ entry, onDelete }) {
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
+  // Handler for the delete button click
   const handleDelete = () => {
+    // Prompt the user for confirmation before deleting
     if (window.confirm('Are you sure you want to delete this journal entry?')) {
       onDelete(entry._id);
     }
