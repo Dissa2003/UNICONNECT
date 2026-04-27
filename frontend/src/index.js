@@ -8,6 +8,10 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 
+// Start downloading face models immediately at app boot (singleton — never loads twice).
+import { loadFaceModels } from './faceModelLoader';
+loadFaceModels();
+
 // Apply stored theme before React renders to prevent flash
 (function () {
   const t = localStorage.getItem('uc-theme') || 'dark';

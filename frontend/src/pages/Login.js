@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { faceapi, loadFaceModels } from '../faceModelLoader';
 import api from '../services/api';
 import '../styles/Login.css';
 import { useTheme } from '../ThemeContext';
-
-const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
-const FACE_API_CDN = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -47,6 +45,7 @@ export default function Login() {
   const [faceBusy, setFaceBusy] = useState(false);
   const [faceError, setFaceError] = useState('');
   const [faceInfo, setFaceInfo] = useState('');
+  const [modelsReady, setModelsReady] = useState(false);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -124,6 +123,22 @@ export default function Login() {
     window.dispatchEvent(new Event('auth-changed'));
   }, []);
 
+  // Mark models ready as soon as the singleton promise resolves.
+  // The download started in index.js — this just waits for it.
+  useEffect(() => {
+    let cancelled = false;
+    loadFaceModels().then(() => {
+      if (!cancelled) {
+        modelsLoadedRef.current = true;
+        setModelsReady(true);
+        setFaceInfo(prev =>
+          prev && prev.includes('AI models') ? 'Camera ready. Keep your face centered and click Scan Face.' : prev
+        );
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
 
 
   const switchTab = login => {
@@ -159,51 +174,12 @@ export default function Login() {
     }
   };
 
-  const ensureFaceModels = async () => {
-    if (modelsLoadedRef.current && faceApiRef.current) {
-      return faceApiRef.current;
-    }
-
-    let faceapi = window.faceapi;
-
-    if (!faceapi) {
-      await new Promise((resolve, reject) => {
-        const existing = document.querySelector('script[data-face-api="true"]');
-        if (existing) {
-          existing.addEventListener('load', resolve, { once: true });
-          existing.addEventListener('error', reject, { once: true });
-          return;
-        }
-
-        const script = document.createElement('script');
-        script.src = FACE_API_CDN;
-        script.async = true;
-        script.dataset.faceApi = 'true';
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error('Failed to load face-api script'));
-        document.body.appendChild(script);
-      });
-
-      faceapi = window.faceapi;
-    }
-
-    if (!faceapi) {
-      throw new Error('face-api is unavailable');
-    }
-
-    await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL);
-
-    faceApiRef.current = faceapi;
-    modelsLoadedRef.current = true;
-    return faceapi;
-  };
+  const ensureFaceModels = () => loadFaceModels();
 
   const openFaceScanner = mode => {
     setFaceMode(mode);
     setFaceError('');
-    setFaceInfo('Opening camera...');
+    setFaceInfo('Opening camera…');
     setFaceModalOpen(true);
     // camera is started in the useEffect below, after the modal has rendered
     // and the <video> element is guaranteed to be in the DOM
@@ -230,7 +206,7 @@ export default function Login() {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
-        setFaceInfo('Camera ready. Keep your face centered and click Scan Face.');
+        setFaceInfo(modelsLoadedRef.current ? 'Camera ready. Keep your face centered and click Scan Face.' : 'Camera ready. AI models still loading — Scan Face will unlock shortly.');
       } catch (err) {
         if (!cancelled) {
           setFaceError('Could not access camera. Please allow camera permission.');
@@ -256,7 +232,7 @@ export default function Login() {
     setFaceError('');
 
     try {
-      const faceapi = await ensureFaceModels();
+      await ensureFaceModels();
       const video = videoRef.current;
 
       if (!video) {
@@ -589,9 +565,30 @@ export default function Login() {
               <span className="btn-text">Sign In to UniConnect</span>
               <div className="spinner"></div>
             </button>
-            <button className="btn-smart" type="button" onClick={() => openFaceScanner('login')}>
-              Smart Login (Face ID)
+            <button className="btn-smart" type="button" onClick={() => openFaceScanner('login')} title="Smart Login with Face ID">
+              ⚡ Smart Login (Face ID)
             </button>
+            <div style={{ textAlign: 'center', marginTop: '1.2rem' }}>
+              <button
+                type="button"
+                onClick={() => navigate('/admin-login')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'rgba(100,160,255,0.55)',
+                  fontSize: '0.72rem',
+                  cursor: 'pointer',
+                  letterSpacing: '0.04em',
+                  padding: '0.2rem 0.5rem',
+                  borderRadius: '4px',
+                  transition: 'color .2s',
+                }}
+                onMouseEnter={e => e.target.style.color = 'rgba(100,160,255,0.9)'}
+                onMouseLeave={e => e.target.style.color = 'rgba(100,160,255,0.55)'}
+              >
+                🔐 Admin Portal
+              </button>
+            </div>
           </div>
           {/* register panel */}
           <div className={`form-panel ${!isLogin ? 'active' : ''}`} id="panelReg">
@@ -737,7 +734,7 @@ export default function Login() {
             )}
             <div className="field" style={{marginBottom:'1.4rem'}}>
               <label>Smart Login Face</label>
-              <button className="btn-smart" type="button" onClick={() => openFaceScanner('register')}>
+              <button className="btn-smart" type="button" onClick={() => openFaceScanner('register')} title="Enroll your face for Smart Login">
                 Add your face for smart login
               </button>
               <div className="face-enroll-note">
@@ -765,8 +762,8 @@ export default function Login() {
             {faceInfo ? <div className="face-info">{faceInfo}</div> : null}
             {faceError ? <div className="face-error">{faceError}</div> : null}
             <div className="face-actions">
-              <button className="btn-smart" type="button" onClick={scanFace} disabled={faceBusy}>
-                {faceBusy ? 'Scanning...' : 'Scan Face'}
+              <button className="btn-smart" type="button" onClick={scanFace} disabled={faceBusy || !modelsReady}>
+                {faceBusy ? 'Scanning…' : !modelsReady ? '⏳ Preparing AI…' : '⚡ Scan Face'}
               </button>
               <button className="btn-cancel" type="button" onClick={closeFaceScanner}>
                 Cancel
