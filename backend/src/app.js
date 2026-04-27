@@ -142,6 +142,15 @@ try {
   console.error("✗ Error loading audioRoutes:", err.message);
 }
 
+// Admin routes
+try {
+  const adminRoutes = require("./routes/adminRoutes");
+  app.use("/api/admin", adminRoutes);
+  console.log("✓ adminRoutes loaded");
+} catch (err) {
+  console.error("✗ Error loading adminRoutes:", err.message);
+}
+
 server.listen(5000, async () => {
   try {
     await connectDB();

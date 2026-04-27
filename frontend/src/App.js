@@ -8,6 +8,7 @@ import Clients from './pages/Clients';
 import TutorChatting from './pages/TutorChatting';
 import TutorEarnings from './pages/TutorEarnings';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminLogin from './pages/AdminLogin';
 import StudyRoom from './pages/StudyRoom';
 import UserProfilePage from './pages/UserProfilePage';
 import Navbar from './components/Navbar';
@@ -26,7 +27,7 @@ function AppWrapper() {
   const navigate = useNavigate();
   const location = useLocation();
   useEffect(() => {
-    const publicRoutes = ['/', '/login', '/register'];
+    const publicRoutes = ['/', '/login', '/register', '/admin-login'];
     const token = localStorage.getItem('token');
     if (!token && !publicRoutes.includes(location.pathname)) {
       navigate('/login', { replace: true });
@@ -71,7 +72,7 @@ function AppWrapper() {
     };
   }, [navigate]);
 
-  const showNavbar = !['/', '/login', '/register'].includes(location.pathname) && !location.pathname.startsWith('/tutor');
+  const showNavbar = !['/', '/login', '/register', '/admin-login', '/admin'].includes(location.pathname) && !location.pathname.startsWith('/tutor');
 
   return (
     <> 
@@ -82,6 +83,7 @@ function AppWrapper() {
         <Route path="/login" element={<Login/>} />
         {/* both routes use the same login/register component */}
         <Route path="/register" element={<Login/>} />
+        <Route path="/admin-login" element={<AdminLogin/>} />
         <Route path="/student" element={<Private><StudentDashboard/></Private>} />
         <Route path="/tutor" element={<Private><TutorDashboard/></Private>} />
         <Route path="/tutor/clients" element={<Private><Clients/></Private>} />
